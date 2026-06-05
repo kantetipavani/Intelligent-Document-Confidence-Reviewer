@@ -1,0 +1,59 @@
+.document-page {
+  display: grid;
+  grid-template-columns:
+    1fr 1fr;
+  gap: 20px;
+}
+
+.pdf-container {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  overflow: auto;
+}
+
+.field-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+.field-table th,
+.field-table td {
+  border: 1px solid #ddd;
+  padding: 12px;
+}
+
+.field-table input {
+  width: 100%;
+  padding: 8px;
+}
+
+.confidence-high {
+  background: #22c55e;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.confidence-medium {
+  background: #f59e0b;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.confidence-low {
+  background: #ef4444;
+  color: white;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.version-box,
+.diff-box {
+  margin-top: 20px;
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+}

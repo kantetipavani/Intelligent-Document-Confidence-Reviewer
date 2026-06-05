@@ -1,0 +1,1217 @@
+import { useEffect, useState } from "react";
+import Link from "next/link";
+
+import Layout from "../components/layout";
+import ExtractedFields from "../components/ExtractedFields";
+import api from "../services/api";
+
+
+export default function Dashboard() {
+
+  const [activePage, setActivePage] =
+    useState("dashboard");
+
+  const [selectedFile, setSelectedFile] =
+    useState(null);
+
+  const [fields, setFields] =
+    useState([]);
+
+  const [isExtracted, setIsExtracted] =
+    useState(false);
+
+  const [loading, setLoading] =
+    useState(false);
+
+  const [activityLoading, setActivityLoading] =
+    useState(false);
+
+  const [activity, setActivity] =
+    useState([]);
+
+  const [selectedActivityIndex, setSelectedActivityIndex] =
+    useState<number | null>(null);
+
+  const [activityError, setActivityError] =
+    useState<string | null>(null);
+
+  const userEmail =
+    typeof window !== "undefined"
+      ? localStorage.getItem("userEmail")
+      : null;
+
+
+  /* FILE SELECT */
+
+  const handleFileUpload = (e) => {
+
+    if (e.target.files?.[0]) {
+
+      setSelectedFile(
+        e.target.files[0]
+      );
+
+      setIsExtracted(false);
+
+    }
+
+  };
+
+  /* OCR EXTRACTION */
+
+  const handleExtract = async () => {
+
+    if (!selectedFile) {
+
+      alert(
+        "Please upload PDF / DOC / TXT file"
+      );
+
+      return;
+
+    }
+
+    try {
+
+      setLoading(true);
+
+      const formData = new FormData();
+
+      // Backend requires tenant_id and filename as form fields.
+      formData.append("tenant_id", "default");
+      formData.append("filename", selectedFile.name);
+      if (userEmail) {
+        formData.append("user_email", userEmail);
+      }
+      formData.append(
+        "file",
+        selectedFile
+      );
+
+      const response =
+        await api.post(
+          "/documents/upload",
+          formData,
+
+          {
+            headers: {
+              "Content-Type":
+                "multipart/form-data",
+            },
+          }
+        );
+
+      const documentId = response.data.document_id;
+      let extraction: any = response.data?.extraction;
+
+      // Newer backend responses include extraction directly. If an older response
+      // only returns document_id, fall back to polling the latest snapshot.
+      const maxAttempts = 20;
+      const delayMs = 500;
+
+      for (let attempt = 0; !extraction && documentId && attempt < maxAttempts; attempt++) {
+        const latest = await api.get(
+          `/versions/latest/${documentId}`
+        );
+
+        extraction = latest.data?.extraction;
+        if (extraction) break;
+
+        await new Promise((r) => setTimeout(r, delayMs));
+      }
+
+      if (!extraction) {
+        throw new Error("Extraction result not available");
+      }
+
+      const normalizedExtraction =
+        extraction?.fields &&
+        typeof extraction.fields === "object"
+          ? {
+              ...extraction.fields,
+              ...extraction,
+            }
+          : extraction || {};
+
+      const aliasGroups = [
+        ["invoice_number", "invoice_no"],
+        ["vendor_name", "vendor"],
+        ["invoice_total", "amount"],
+      ];
+
+      const orderedKeys = [
+        "invoice_number",
+        "vendor_name",
+        "invoice_total",
+        "date",
+        "gstin",
+        "status",
+      ];
+
+      const usedAliases = new Set<string>();
+      const extractionKeys = [
+        ...orderedKeys.filter((key) => {
+          if (!Object.prototype.hasOwnProperty.call(normalizedExtraction, key)) {
+            return false;
+          }
+
+          const aliasGroup = aliasGroups.find((group) => group.includes(key));
+          if (!aliasGroup) {
+            return true;
+          }
+
+          if (aliasGroup.some((alias) => usedAliases.has(alias))) {
+            return false;
+          }
+
+          aliasGroup.forEach((alias) => usedAliases.add(alias));
+          return true;
+        }),
+        ...Object.keys(normalizedExtraction).filter(
+          (key) =>
+            key !== "fields" &&
+            !orderedKeys.includes(key) &&
+            !usedAliases.has(key),
+        ),
+      ];
+
+      const extractedFields = extractionKeys.map((key) => {
+        const f = normalizedExtraction?.[key];
+        return {
+          name: key.replace(/_/g, " ").toUpperCase(),
+          value: f?.value ?? "",
+          confidence: f?.confidence ?? 0,
+        };
+      });
+
+      setFields(extractedFields);
+      setIsExtracted(true);
+    } catch (error) {
+
+      console.error(error);
+
+      alert(
+        "OCR Extraction Failed"
+      );
+
+    } finally {
+
+      setLoading(false);
+
+    }
+
+  };
+
+  const handleLogout = async () => {
+    const email =
+      localStorage.getItem("userEmail");
+
+    try {
+      await api.post(
+        "/auth/logout",
+        { email }
+      );
+    } catch (e) {
+      console.error(e);
+    } finally {
+      localStorage.removeItem("token");
+      alert(
+        "Logout Successfully"
+      );
+      window.location.href = "/login";
+    }
+  };
+
+  const formatActivityDate = (createdAt: string) => {
+    if (!createdAt) return "";
+
+    const utcDate =
+      createdAt.endsWith("Z") ||
+      /[+-]\d{2}:\d{2}$/.test(createdAt)
+        ? createdAt
+        : `${createdAt}Z`;
+
+    return new Date(utcDate).toLocaleString(
+      "en-IN",
+      {
+        timeZone: "Asia/Kolkata",
+      }
+    );
+  };
+
+  useEffect(() => {
+    if (activePage !== "info") return;
+
+    const loadActivity = async () => {
+      try {
+        setActivityLoading(true);
+        setActivityError(null);
+
+        const email =
+          localStorage.getItem("userEmail");
+
+        if (!email) {
+          setActivityError(
+            "No user email found. Please login."
+          );
+          setActivity([]);
+          return;
+        }
+
+        const res =
+          await api.get(
+            `/activity/by-email/${email}`
+          );
+
+        setActivity(res.data || []);
+      } catch (e: any) {
+        setActivityError(
+          e?.response?.data?.detail ||
+            "Failed to load activity"
+        );
+      } finally {
+        setActivityLoading(false);
+      }
+    };
+
+    loadActivity();
+  }, [activePage]);
+
+  return (
+
+    <Layout>
+
+
+      <div className="dashboard-wrapper">
+
+        {/* SIDEBAR */}
+
+        <aside className="sidebar">
+
+          <div className="logo-section">
+
+            <div className="logo-circle">
+              AI
+            </div>
+
+            <div>
+
+              <h2>
+                Invoice AI
+              </h2>
+
+              <p>
+                Smart OCR System
+              </p>
+
+            </div>
+
+          </div>
+
+          {/* NAVIGATION */}
+
+          <nav className="sidebar-nav">
+
+            <button
+              className={
+                activePage === "dashboard"
+                  ? "nav-btn active"
+                  : "nav-btn"
+              }
+              onClick={() =>
+                setActivePage("dashboard")
+              }
+            >
+              📊 Dashboard
+            </button>
+
+            <button
+              className={
+                activePage === "reviewer"
+                  ? "nav-btn active"
+                  : "nav-btn"
+              }
+              onClick={() =>
+                setActivePage("reviewer")
+              }
+            >
+              📄 Invoice Reviewer
+            </button>
+
+            <button
+              className={
+                activePage === "info"
+                  ? "nav-btn active"
+                  : "nav-btn"
+              }
+              onClick={() =>
+                setActivePage("info")
+              }
+            >
+              ℹ️ INFO
+            </button>
+          </nav>
+
+
+        </aside>
+
+        {/* MAIN */}
+
+        <main className="main-content">
+
+          {/* TOPBAR */}
+
+          <div className="topbar">
+
+            <div>
+
+              <h1>
+                Intelligent Document Reviewer
+              </h1>
+
+              <p>
+                AI Powered Invoice Review Platform
+              </p>
+
+            </div>
+
+            <div className="topbar-right">
+
+              <div className="status-badge">
+                🟢 OCR Engine Active
+              </div>
+
+              {/* PROFILE */}
+
+              <div className="profile-dropdown">
+
+                <div className="profile-trigger">
+
+                  <div className="profile-icon">
+
+                    <Link href="/login">
+                      👤
+                    </Link>
+
+                  </div>
+
+                </div>
+
+                <div className="dropdown-menu">
+
+                  <Link href="/profile">
+                    <button>
+                      View Profile
+                    </button>
+                  </Link>
+
+                  
+
+                    <button
+                      className="logout-btn"
+                      onClick={handleLogout}
+                    >
+                      Logout
+                    </button>
+
+                </div>
+
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* DASHBOARD */}
+
+          {
+            activePage === "dashboard" && (
+
+              <>
+
+                <div className="stats-grid">
+
+                  <div className="stat-card blue">
+
+                    <h3>
+                      100+
+                    </h3>
+
+                    <p>
+                      Invoices Processed
+                    </p>
+
+                  </div>
+
+                  <div className="stat-card purple">
+
+                    <h3>
+                      98%
+                    </h3>
+
+                    <p>
+                      OCR Accuracy
+                    </p>
+
+                  </div>
+
+                  <div className="stat-card orange">
+
+                    <h3>
+                      18 sec
+                    </h3>
+
+                    <p>
+                      Avg Processing Time
+                    </p>
+
+                  </div>
+
+                </div>
+
+              </>
+
+            )
+          }
+
+          {/* INFO */}
+
+          {
+            activePage === "info" && (
+              <div className="reviewer-page">
+                <div className="upload-card">
+                  <h2>Account & Activity</h2>
+                  <p className="activity-subtitle">
+                    User: <b>{userEmail || "Unknown"}</b>
+                  </p>
+                  {activityLoading ? (
+                    <p>Loading activity...</p>
+                  ) : activityError ? (
+                    <p className="activity-error">{activityError}</p>
+                  ) : activity?.length ? (
+                    <div className="activity-list">
+                      {activity.map((ev, idx) => (
+                        <div
+                          key={idx}
+                          className={
+                            "activity-item" +
+                            (selectedActivityIndex === idx
+                              ? " selected"
+                              : "")
+                          }
+                          onClick={() => setSelectedActivityIndex(idx)}
+                        >
+                          <div className="activity-head">
+                            <span className="activity-type">{ev.event_type}</span>
+                            <span className="activity-date">
+                              {formatActivityDate(ev.created_at)}
+                            </span>
+                          </div>
+                          <pre className="activity-payload">
+                            {JSON.stringify(ev.payload, null, 2)}
+                          </pre>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <div className="empty-icon">📋</div>
+                      <h3>No activity yet</h3>
+                      <p>Login, change password, upload invoices, and approve/retrieve actions to see details.</p>
+                    </div>
+                  )}
+                </div>
+                <div className="review-panel">
+                  <div className="review-header">
+                    <h2>Extracted Fields</h2>
+                    <span className="review-tag">From retrieval events</span>
+                  </div>
+                  <div className="extraction-panel">
+                    {selectedActivityIndex !== null ? (
+                      <ExtractedFields
+                        fields={
+                          (() => {
+                            const ev = activity[selectedActivityIndex];
+                            const extraction = ev?.payload?.extraction ?? ev?.payload;
+
+                            if (extraction?.fields && typeof extraction.fields === "object") {
+                              const normalized = { ...extraction.fields };
+                              Object.keys(extraction).forEach((key) => {
+                                if (key === "fields" || Object.prototype.hasOwnProperty.call(normalized, key)) {
+                                  return;
+                                }
+                                normalized[key] = extraction[key];
+                              });
+                              return normalized;
+                            }
+
+                            return extraction || {};
+                          })()
+                        }
+                      />
+                    ) : (
+                      <div className="empty-state selected-extraction-empty">
+                        <h3>Select an extraction event</h3>
+                        <p>Click an activity item (for example, "extraction_completed") to view its extracted fields here.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          }
+
+          {/* INVOICE REVIEWER */}
+
+          {
+            activePage === "reviewer" && (
+              <div className="reviewer-page">
+
+
+
+
+                {/* LEFT */}
+
+                <div className="upload-card">
+
+                  <h2>
+                    Upload Invoice
+                  </h2>
+
+                  <div className="upload-box">
+
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.txt"
+                      onChange={handleFileUpload}
+                    />
+
+                    {
+                      selectedFile && (
+
+                        <div className="file-preview">
+
+                          📄 {selectedFile.name}
+
+                        </div>
+
+                      )
+                    }
+
+                  </div>
+
+                  <button
+                    className="extract-btn"
+                    onClick={handleExtract}
+                  >
+
+                    {
+                      loading
+                        ? "Processing..."
+                        : "Extract Invoice Data"
+                    }
+
+                  </button>
+
+                </div>
+
+                {/* RIGHT */}
+
+                <div className="review-panel">
+
+                  <div className="review-header">
+
+                    <h2>
+                      Extracted Invoice Fields
+                    </h2>
+
+                    <span className="review-tag">
+                      AI Generated
+                    </span>
+
+                  </div>
+
+                  {
+                    isExtracted ? (
+
+                      <div className="fields-grid">
+
+                        {
+                          fields.map(
+                            (
+                              field,
+                              index
+                            ) => (
+
+                              <div
+                                key={index}
+                                className="field-card"
+                              >
+
+                                <div className="field-top">
+
+                                  <h4>
+                                    {field.name}
+                                  </h4>
+
+                                  <span
+                                  className={
+                                      (() => {
+                                        const raw = Number(
+                                          field?.confidence ?? 0,
+                                        );
+                                        const percent = Math.max(
+                                          0,
+                                          Math.min(
+                                            100,
+                                            Math.round(raw * 100),
+                                          ),
+                                        );
+
+                                        return percent >= 80
+                                          ? "confidence high"
+                                          : percent >= 60
+                                            ? "confidence medium"
+                                            : "confidence low";
+                                      })()
+                                    }
+                                  >
+
+
+                                    {Math.max(
+                                      0,
+                                      Math.min(
+                                        100,
+                                        Math.round(
+                                          Number(
+                                            field?.confidence ?? 0,
+                                          ) * 100
+                                        )
+                                      )
+                                    )}%
+
+                                  </span>
+
+
+                                </div>
+
+                                <p>
+                                  {field.value}
+                                </p>
+
+                              </div>
+
+                            )
+                          )
+                        }
+
+                      </div>
+
+                    ) : (
+
+                      <div className="empty-state">
+
+                        <div className="empty-icon">
+                          📑
+                        </div>
+
+                        <h3>
+                          No Invoice Data Yet
+                        </h3>
+
+                        <p>
+                          Upload invoice and start OCR extraction
+                        </p>
+
+                      </div>
+
+                    )
+                  }
+
+                </div>
+
+              </div>
+
+            )
+          }
+
+        </main>
+
+      </div>
+
+      <style jsx>{`
+
+        * {
+          box-sizing: border-box;
+          font-family: Inter, sans-serif;
+        }
+
+        body {
+          margin: 0;
+        }
+
+        .dashboard-wrapper {
+          display: flex;
+          min-height: 100vh;
+          background:
+            linear-gradient(
+              135deg,
+              #eef2ff,
+              #f8fafc
+            );
+        }
+
+        /* SIDEBAR */
+
+        .sidebar {
+          width: 300px;
+          background:
+            rgba(1,74,74,0.36);
+
+          padding: 28px;
+
+          display: flex;
+          flex-direction: column;
+          gap: 28px;
+        }
+
+        .logo-section {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+        }
+
+        .logo-circle {
+          width: 58px;
+          height: 58px;
+
+          border-radius: 18px;
+
+          background:
+            linear-gradient(
+              135deg,
+              #6366f1,
+              #8b5cf6
+            );
+
+          display: flex;
+          align-items: center;
+          justify-content: center;
+
+          color: white;
+          font-weight: 800;
+          font-size: 20px;
+        }
+
+        .logo-section h2 {
+          margin: 0;
+          color: white;
+        }
+
+        .logo-section p {
+          margin: 4px 0 0;
+          color: rgba(255,255,255,0.8);
+        }
+
+        /* NAV */
+
+        .sidebar-nav {
+          display: flex;
+          flex-direction: column;
+          
+          gap: 14px;
+        }
+
+        .nav-btn {
+          border: none;
+          padding: 16px;
+          border-radius: 14px;
+          cursor: pointer;
+          font-weight: 600;
+          text-align: left;
+          background: white;
+          color: #334155;
+          transition: 0.3s ease;
+        }
+
+        .nav-btn.active {
+          background:
+            linear-gradient(
+              135deg,
+              #6366f1,
+              #8b5cf6
+            );
+
+          color: white;
+        }
+
+        /* MAIN */
+
+        .main-content {
+          flex: 1;
+          padding: 32px;
+
+          background: url("https://www.ocft.com/en/upload/2024-09-02/17252558633938a89b1c28ba41f9c730191b1434c616d86.png");
+          background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    
+          
+          }
+
+
+        /* TOPBAR */
+
+        .topbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 28px;
+        }
+
+        .topbar h1 {
+          margin: 0;
+          color: #0f172a;
+        }
+
+        .topbar p {
+          color: #64748b;
+        }
+
+        .topbar-right {
+          display: flex;
+          align-items: center;
+          gap: 18px;
+        }
+
+        .status-badge {
+          background: white;
+          padding: 12px 18px;
+          border-radius: 999px;
+          color: #059669;
+          font-weight: 600;
+        }
+
+        /* PROFILE */
+
+        .profile-dropdown {
+          position: relative;
+        }
+
+        .profile-trigger {
+          background: white;
+          padding: 10px 16px;
+          border-radius: 14px;
+          cursor: pointer;
+        }
+
+        .profile-icon {
+          font-size: 20px;
+        }
+
+        .dropdown-menu {
+          position: absolute;
+          top: 70px;
+          right: 0;
+          width: 220px;
+          background: white;
+          border-radius: 18px;
+          padding: 12px;
+          box-shadow:
+            0 10px 24px rgba(0,0,0,0.08);
+
+          opacity: 0;
+          visibility: hidden;
+          transition: 0.3s ease;
+        }
+
+        .profile-dropdown:hover .dropdown-menu {
+          opacity: 1;
+          visibility: visible;
+        }
+
+        .dropdown-menu button {
+          width: 100%;
+          border: none;
+          background: transparent;
+          padding: 14px;
+          border-radius: 12px;
+          text-align: left;
+          cursor: pointer;
+        }
+
+        .dropdown-menu button:hover {
+          background: #f8fafc;
+        }
+
+        /* STATS */
+
+        .stats-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(3,1fr);
+
+          gap: 20px;
+        }
+
+        .stat-card {
+          padding: 26px;
+          border-radius: 22px;
+        }
+
+        .stat-card h3 {
+          margin: 0;
+          font-size: 36px;
+        }
+
+        .blue {
+          background: #dbeafe;
+        }
+
+        .purple {
+          background: #ede9fe;
+        }
+
+        .orange {
+          background: #cffafe;
+        }
+
+        /* REVIEWER */
+
+        .reviewer-page {
+          display: grid;
+          grid-template-columns:
+            350px 1fr;
+
+          gap: 24px;
+        }
+
+        .upload-card,
+        .review-panel {
+          background: white;
+          border-radius: 24px;
+          padding: 28px;
+          box-shadow:
+            0 10px 24px rgba(0,0,0,0.05);
+        }
+
+        .upload-box {
+          margin-top: 24px;
+          padding: 34px;
+          border:
+            2px dashed #c7d2fe;
+
+          border-radius: 18px;
+          text-align: center;
+          background: #f8fafc;
+        }
+
+        .extract-btn {
+          width: 100%;
+          margin-top: 24px;
+          border: none;
+          padding: 16px;
+          border-radius: 14px;
+          background:
+            linear-gradient(
+              135deg,
+              #6366f1,
+              #8b5cf6
+            );
+
+          color: white;
+          font-weight: 700;
+          cursor: pointer;
+        }
+
+        .review-header {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 24px;
+        }
+
+        .review-tag {
+          background: #dbeafe;
+          color: #2563eb;
+          padding: 10px 16px;
+          border-radius: 999px;
+        }
+
+        /* FIELDS */
+
+        .fields-grid {
+          display: grid;
+          grid-template-columns:
+            repeat(auto-fit,minmax(250px,1fr));
+
+          gap: 18px;
+        }
+
+        .field-card {
+          border:
+            1px solid #e2e8f0;
+
+          border-radius: 18px;
+          padding: 20px;
+        }
+
+        .field-top {
+          display: flex;
+          justify-content: space-between;
+          margin-bottom: 12px;
+        }
+
+        .confidence {
+          padding: 6px 12px;
+          border-radius: 999px;
+          font-size: 12px;
+          font-weight: 700;
+        }
+
+        .high {
+          background: #dcfce7;
+          color: #15803d;
+        }
+
+        .medium {
+          background: #fef9c3;
+          color: #ca8a04;
+        }
+
+        .low {
+          background: #fee2e2;
+          color: #dc2626;
+        }
+
+        /* EMPTY */
+
+        .empty-state {
+          text-align: center;
+          padding: 80px 20px;
+        }
+
+        .empty-icon {
+          font-size: 70px;
+        }
+
+        .activity-subtitle {
+          margin-top: 6px;
+          color: #64748b;
+        }
+
+        .activity-error {
+          color: #dc2626;
+          font-weight: 700;
+        }
+
+        .activity-list {
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          margin-top: 20px;
+          max-height: 560px;
+          overflow: auto;
+          padding-right: 8px;
+        }
+
+        .activity-item {
+          border: 1px solid #e2e8f0;
+          border-radius: 18px;
+          padding: 14px;
+          background: #ffffff;
+          transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+        }
+
+        .activity-item:hover {
+          cursor: pointer;
+          transform: translateY(-1px);
+          border-color: #c7d2fe;
+          background: #f8fbff;
+        }
+
+        .activity-item.selected {
+          border-color: #6366f1;
+          background: #eef2ff;
+        }
+
+        .activity-head {
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
+
+        .activity-type {
+          font-weight: 800;
+          color: #0f172a;
+        }
+
+        .activity-date {
+          color: #64748b;
+          font-size: 12px;
+          white-space: nowrap;
+        }
+
+        .activity-payload {
+          margin: 0;
+          font-size: 12px;
+          background: #f8fafc;
+          padding: 12px;
+          border-radius: 14px;
+          overflow: auto;
+          white-space: pre-wrap;
+          word-break: break-word;
+        }
+
+        .extraction-panel {
+          padding: 10px 0 0;
+          min-height: 280px;
+        }
+
+        .selected-extraction-empty {
+          background: #f8fafc;
+          border-radius: 18px;
+          padding: 24px;
+          text-align: center;
+          color: #334155;
+          border: 1px dashed #c7d2fe;
+        }
+
+        .selected-extraction-empty h3 {
+          margin-bottom: 12px;
+        }
+
+        .selected-extraction-empty p {
+          margin: 0;
+          color: #64748b;
+        }
+
+        /* MOBILE */
+
+        @media (max-width: 1000px) {
+
+          .dashboard-wrapper {
+            flex-direction: column;
+          }
+
+          .sidebar {
+            width: 100%;
+          }
+
+          .reviewer-page {
+            grid-template-columns: 1fr;
+          }
+
+          .stats-grid {
+            grid-template-columns: 1fr;
+          }
+
+        }
+
+      `}</style>
+
+    </Layout>
+
+  );
+
+}
