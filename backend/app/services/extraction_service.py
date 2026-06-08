@@ -5,7 +5,7 @@ from typing import Any
 
 from app.models.extraction_run import ExtractionRun
 from app.models.document import Document
-from app.models.review_version import ReviewVersion
+from app.services.version_service import create_review_version
 
 
 def extract_text_best_effort(*, file_bytes: bytes, content_type: str, filename: str) -> str:
@@ -371,16 +371,14 @@ async def run_extraction_and_prepare_review_version(
         existing = await ReviewVersion.find({"tenant_id": tenant_id, "document_id": document_id}).to_list()
         next_version = 1 if not existing else max(v.version_number for v in existing) + 1
 
-        version = ReviewVersion(
+        version = await create_review_version(
             tenant_id=tenant_id,
             document_id=document_id,
             extraction_run_id=extraction_run_id,
-            version_number=next_version,
-            reviewer_user_id=None,
-            action="ai_pass",
             snapshot=result,
+            action="ai_pass",
+            reviewer_user_id=None,
         )
-        await version.insert()
 
         try:
             from app.api.activity import record_event

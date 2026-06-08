@@ -12,6 +12,7 @@ class User(Document):
     # NOTE: store password hash, not raw password
     password_hash: str
     tenant_id: str = Field(min_length=1)
+    role: str = Field(default="user", min_length=1)
 
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)

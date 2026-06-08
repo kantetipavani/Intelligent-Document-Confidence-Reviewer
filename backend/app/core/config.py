@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     mongodb_db: str = "idc_dev"
     skip_db: bool = False
 
+    jwt_secret: str = "supersecret-change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_expiration_minutes: int = 60
+
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-3-5-haiku-latest"
     anthropic_max_tokens: int = 800

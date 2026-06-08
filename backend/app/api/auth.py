@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-import hashlib
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from app.api.activity import record_event
+from app.core.security import (
+    create_access_token,
+    get_current_user,
+    hash_password,
+    verify_password,
+)
 from app.models.user import User, normalize_email
 
 router = APIRouter()
@@ -33,10 +38,13 @@ class AuthResponse(BaseModel):
     email: str | None = None
 
 
-def hash_password(password: str) -> str:
-    # Lightweight hash for scaffold purposes.
-    # In production use bcrypt/argon2.
-    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+@router.get("/me")
+async def read_current_user(current_user: User = Depends(get_current_user)) -> dict:
+    return {
+        "email": current_user.email,
+        "tenant_id": current_user.tenant_id,
+        "role": getattr(current_user, "role", "user"),
+    }
 
 
 @router.post("/register", response_model=AuthResponse)
@@ -58,40 +66,38 @@ async def register(payload: RegisterPayload) -> AuthResponse:
         email=email,
         password_hash=hash_password(payload.password),
         tenant_id=payload.tenant_id,
+        role="user",
     )
     await user.insert()
 
-    # Frontend only checks token existence; keep stub token format.
-    return AuthResponse(
-        access_token=f"stub-token::{email}",
-        token_type="bearer",
-        email=email,
-    )
+    access_token = create_access_token(subject=email, tenant_id=payload.tenant_id, role=user.role)
+    return AuthResponse(access_token=access_token, token_type="bearer", email=email)
 
 
 @router.post("/change-password")
-async def change_password(payload: ChangePasswordPayload) -> dict:
+async def change_password(
+    payload: ChangePasswordPayload,
+    current_user: User = Depends(get_current_user),
+) -> dict:
     email = normalize_email(payload.email)
     if not email:
         raise HTTPException(status_code=400, detail="email required")
+    if email != current_user.email:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Can only change own password")
     if not payload.new_password or len(payload.new_password) < 6:
         raise HTTPException(status_code=400, detail="password must be at least 6 characters")
-
-    user = await User.find_one(User.email == email)
-    if not user or user.password_hash != hash_password(payload.current_password):
+    if not verify_password(payload.current_password, current_user.password_hash):
         raise HTTPException(status_code=401, detail="Current password is incorrect")
 
-    user.password_hash = hash_password(payload.new_password)
-    await user.save()
+    current_user.password_hash = hash_password(payload.new_password)
+    await current_user.save()
 
     try:
-        from app.api.activity import record_event
-
         await record_event(
             event_type="change_password",
-            user_email=email,
-            tenant_id=getattr(user, "tenant_id", None),
-            payload={"email": email, "action": "password_changed"},
+            user_email=current_user.email,
+            tenant_id=current_user.tenant_id,
+            payload={"email": current_user.email, "action": "password_changed"},
         )
     except Exception:
         pass
@@ -103,13 +109,10 @@ async def change_password(payload: ChangePasswordPayload) -> dict:
 async def login(payload: LoginPayload) -> AuthResponse:
     email = normalize_email(payload.email)
     user = await User.find_one(User.email == email)
-    if not user or user.password_hash != hash_password(payload.password):
+    if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    # Audit: login
     try:
-        from app.api.activity import record_event
-
         await record_event(
             event_type="login",
             user_email=email,
@@ -119,11 +122,8 @@ async def login(payload: LoginPayload) -> AuthResponse:
     except Exception:
         pass
 
-    return AuthResponse(
-        access_token=f"stub-token::{email}",
-        token_type="bearer",
-        email=email,
-    )
+    access_token = create_access_token(subject=email, tenant_id=user.tenant_id, role=getattr(user, "role", "user"))
+    return AuthResponse(access_token=access_token, token_type="bearer", email=email)
 
 
 

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
+from app.core.security import get_current_user
 from app.models.audit_event import AuditEvent
-from app.models.user import normalize_email
+from app.models.user import normalize_email, User
 
 router = APIRouter()
 
@@ -14,21 +15,17 @@ class ActivityQuery(BaseModel):
 
 
 @router.get("/me")
-async def get_my_activity() -> list[dict]:
-    # Scaffold: no auth middleware wired, so /me isn't reliable.
-    # Prefer using /by-email endpoint from the frontend.
-    return []
+async def get_my_activity(
+    current_user: User = Depends(get_current_user),
+    limit: int = 200,
+) -> list[dict]:
+    # Tenant + user scoped: prevents leaking audit data across tenants.
+    email = normalize_email(current_user.email)
+    events = await AuditEvent.find({
+        "tenant_id": current_user.tenant_id,
+        "user_email": email,
+    }).sort("-created_at").limit(limit).to_list()
 
-
-
-@router.get("/by-email/{email}")
-async def get_activity_by_email(email: str, limit: int = 200) -> list[dict]:
-
-    email = normalize_email(email)
-    if not email:
-        raise HTTPException(status_code=400, detail="email required")
-
-    events = await AuditEvent.find({"user_email": email}).sort("-created_at").limit(limit).to_list()
     return [
         {
             "event_type": e.event_type,
@@ -38,6 +35,37 @@ async def get_activity_by_email(email: str, limit: int = 200) -> list[dict]:
         }
         for e in events
     ]
+
+
+@router.get("/by-email/{email}")
+async def get_activity_by_email(
+    email: str,
+    limit: int = 200,
+    current_user: User = Depends(get_current_user),
+) -> list[dict]:
+    # Lock down to same tenant and either self or same-user lookup.
+    email = normalize_email(email)
+    if not email:
+        raise HTTPException(status_code=400, detail="email required")
+
+    if email != normalize_email(current_user.email):
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    events = await AuditEvent.find({
+        "tenant_id": current_user.tenant_id,
+        "user_email": email,
+    }).sort("-created_at").limit(limit).to_list()
+
+    return [
+        {
+            "event_type": e.event_type,
+            "user_email": e.user_email,
+            "payload": e.payload,
+            "created_at": e.created_at,
+        }
+        for e in events
+    ]
+
 
 
 async def record_event(

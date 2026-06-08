@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from app.core.security import get_current_user
 from app.models.document import Document
 from app.models.review_version import ReviewVersion
+from app.models.user import User
+from app.services.version_service import create_review_version
 
 router = APIRouter()
 
@@ -17,37 +20,31 @@ class ApproveReviewPayload(BaseModel):
 
 
 @router.post("/approve")
-async def approve_review(payload: ApproveReviewPayload) -> dict:
+async def approve_review(
+    payload: ApproveReviewPayload,
+    current_user: User = Depends(get_current_user),
+) -> dict:
     doc = await Document.get(payload.document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="document not found")
+    if doc.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant mismatch")
 
-    # Determine next version number
-    existing = await ReviewVersion.find({
-        "tenant_id": doc.tenant_id,
-        "document_id": payload.document_id,
-        "action": {"$in": ["ai_pass", "review", "approve"]},
-    }).to_list()
-    next_version = 1 if not existing else max(v.version_number for v in existing) + 1
-
-    # Create new immutable version as "approve"
-    version = ReviewVersion(
+    version = await create_review_version(
         tenant_id=doc.tenant_id,
         document_id=payload.document_id,
         extraction_run_id="unknown",
-        version_number=next_version,
-        reviewer_user_id=payload.reviewer_user_id,
-        action="approve",
         snapshot={"fields": payload.extraction} if "fields" not in payload.extraction else payload.extraction,
+        action="approve",
+        reviewer_user_id=current_user.email,
     )
-    await version.insert()
 
     try:
         from app.api.activity import record_event
 
         await record_event(
             event_type="review_approved",
-            user_email=payload.reviewer_user_id,
+            user_email=current_user.email,
             tenant_id=doc.tenant_id,
             payload={
                 "document_id": payload.document_id,

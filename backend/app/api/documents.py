@@ -1,10 +1,14 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
 from app.core.config import settings
+from app.core.security import get_current_user
+
+
 from app.models.document import Document
+from app.models.user import User
 from app.services.llm_service import ExtractionResult, extract_invoice_from_document_bytes
 
 router = APIRouter()
@@ -21,16 +25,28 @@ async def upload_document(
     tenant_id: str = Form(...),
     filename: str = Form(...),
     file: UploadFile = File(...),
-    user_email: str | None = Form(default=None),
-):
+): 
 
 
-    # Scaffold validation
+    if settings.skip_db:
+        if not tenant_id:
+            raise HTTPException(status_code=400, detail="tenant_id required")
+        if not filename:
+            raise HTTPException(status_code=400, detail="filename required")
+    else:
+        # Enforce JWT + tenant isolation.
+        current_user: User = await get_current_user()  # type: ignore[func-returns-value]
+        if tenant_id != current_user.tenant_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant mismatch")
+        if not tenant_id:
+            raise HTTPException(status_code=400, detail="tenant_id required")
+        if not filename:
+            raise HTTPException(status_code=400, detail="filename required")
 
-    if not tenant_id:
-        raise HTTPException(status_code=400, detail="tenant_id required")
-    if not filename:
-        raise HTTPException(status_code=400, detail="filename required")
+
+
+
+
 
     content_type = file.content_type
     file_bytes = await file.read()
@@ -73,7 +89,7 @@ async def upload_document(
 
         await record_event(
             event_type="document_uploaded",
-            user_email=user_email,
+            user_email=current_user.email,
             tenant_id=tenant_id,
             payload={
                 "document_id": str(doc.id),
@@ -90,7 +106,7 @@ async def upload_document(
         extraction_run_id=str(run.id),
         file_bytes=file_bytes,
         content_type=content_type,
-        user_email=user_email,
+        user_email=current_user.email,
     )
 
     return DocumentCreateResponse(
@@ -104,7 +120,14 @@ async def upload_document(
 
 
 @router.get("/{tenant_id}/{document_id}")
-async def get_document(tenant_id: str, document_id: str) -> dict:
+async def get_document(
+    tenant_id: str,
+    document_id: str,
+    current_user: User = Depends(get_current_user),
+) -> dict:
+    if tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant mismatch")
+
     doc = await Document.get(document_id)
     if not doc or doc.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="document not found")

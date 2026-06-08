@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel
 
+from app.core.security import get_current_user
 from app.models.document import Document
 from app.models.extraction_run import ExtractionRun
+from app.models.user import User
 from app.services.extraction_service import run_extraction_and_prepare_review_version
 
 router = APIRouter()
@@ -16,7 +18,14 @@ class ExtractionTrigger(BaseModel):
 
 
 @router.post("/trigger")
-async def trigger_extraction(payload: ExtractionTrigger, background_tasks: BackgroundTasks):
+async def trigger_extraction(
+    payload: ExtractionTrigger,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    if payload.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant mismatch")
+
     doc = await Document.get(payload.document_id)
     if not doc or doc.tenant_id != payload.tenant_id:
         raise HTTPException(status_code=404, detail="document not found")
