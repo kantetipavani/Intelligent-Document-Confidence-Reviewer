@@ -1,7 +1,8 @@
-# TODO
+# TODO - Security + Tenant Isolation (Sprint 2)
 
-- [x] Normalize extraction response fields in `frontend/pages/[id].tsx` so `ExtractedFields` receives the expected flat field map.
-- [x] Make confidence rendering robust in `frontend/components/ExtractedFields.tsx` (support 0..1 and 0..100 confidence).
-- [ ] Manually verify on a document review page that the extracted invoice fields table populates.
-
+## Planned steps
+- [ ] Harden tenant isolation for all document operations.
+- [ ] Fix `backend/app/api/documents.py` upload route to require JWT and derive tenant_id from token.
+- [ ] Ensure RBAC is enforced where appropriate.
+- [ ] Regression test by running backend server/tests.
 

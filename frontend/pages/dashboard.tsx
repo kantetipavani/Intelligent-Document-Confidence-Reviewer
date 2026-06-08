@@ -389,9 +389,9 @@ export default function Dashboard() {
 
                   <div className="profile-icon">
 
-                    <Link href="/login">
+                   
                       👤
-                    </Link>
+                    
 
                   </div>
 

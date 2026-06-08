@@ -11,6 +11,7 @@ from app.models.document import Document
 from app.models.user import User
 from app.services.llm_service import ExtractionResult, extract_invoice_from_document_bytes
 
+
 router = APIRouter()
 
 
@@ -22,36 +23,29 @@ class DocumentCreateResponse(BaseModel):
 
 @router.post("/upload", response_model=DocumentCreateResponse)
 async def upload_document(
-    tenant_id: str = Form(...),
     filename: str = Form(...),
     file: UploadFile = File(...),
-): 
-
-
+    current_user: User = Depends(get_current_user),
+):
+    # Enforce tenant isolation: the tenant is derived from the JWT, not from a request field.
     if settings.skip_db:
-        if not tenant_id:
-            raise HTTPException(status_code=400, detail="tenant_id required")
-        if not filename:
-            raise HTTPException(status_code=400, detail="filename required")
+        # In skip_db mode we still require a JWT so UI cannot upload into arbitrary tenants.
+        pass
 
-    # In the current scaffold, the frontend upload flow does not send an Authorization bearer token.
-    # For correct UI/OCR behavior, allow uploads when DB is enabled but JWT auth is not present.
-    # If you later wire auth properly, re-introduce get_current_user dependency injection.
-    current_user: User | None = None
-    if not settings.skip_db:
-        if hasattr(settings, "skip_db") and settings.skip_db:
-            current_user = None
+    if not filename:
+        raise HTTPException(status_code=400, detail="filename required")
 
-
-
-
-
+    tenant_id = current_user.tenant_id
 
     content_type = file.content_type
     file_bytes = await file.read()
 
+
+
+
     try:
         extraction = await extract_invoice_from_document_bytes(
+
             file_bytes=file_bytes,
             content_type=content_type,
             filename=filename,
@@ -88,7 +82,7 @@ async def upload_document(
 
         await record_event(
             event_type="document_uploaded",
-            user_email=current_user.email if current_user else None,
+            user_email=current_user.email,
             tenant_id=tenant_id,
             payload={
                 "document_id": str(doc.id),
@@ -105,8 +99,9 @@ async def upload_document(
         extraction_run_id=str(run.id),
         file_bytes=file_bytes,
         content_type=content_type,
-        user_email=current_user.email if current_user else None,
+        user_email=current_user.email,
     )
+
 
 
     return DocumentCreateResponse(
