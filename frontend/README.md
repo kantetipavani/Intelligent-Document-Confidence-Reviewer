@@ -1,368 +1,445 @@
-# INDCR - Intelligent Document Confidence Reviewer
+﻿<div align="center">
+  <h1>🚀 INDCR</h1>
+  <h3>Intelligent Document Confidence Reviewer</h3>
+  <p><em>AI-Powered Invoice Extraction & Review Platform</em></p>
+  
+  [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-00a651?style=for-the-badge&logo=fastapi)](https://fastapi.tiangolo.com/)
+  [![Next.js](https://img.shields.io/badge/Next.js-14-000000?style=for-the-badge&logo=next.js)](https://nextjs.org/)
+  
+  [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
+  [![MongoDB](https://img.shields.io/badge/MongoDB-Latest-00ed64?style=for-the-badge&logo=mongodb)](https://www.mongodb.com/)
+  [![Anthropic](https://img.shields.io/badge/Anthropic%20Claude-API-000000?style=for-the-badge)](https://www.anthropic.com/)
+  
+  <br/>
+  
+  **[🎯 Features](#-features) • [⚡ Quick Start](#-quick-start) • [📚 Documentation](./docs/README.md) • [🤝 Contributing](#-contributing) • [📞 Support](#-support--contact)**
+  
+</div>
 
-A full-stack invoice extraction and review platform powered by AI. Extract invoice data with Claude LLM, review with confidence scores, track document versions, and manage multi-tenant audit trails.
+<div align="center">
+  
+  > 💡 **Transform your invoice processing with AI-powered extraction and intelligent review workflows**
+  
+</div>
+
+## 🎯 Overview
+
+<div align="center">
+  
+**INDCR** is a **full-stack, AI-powered invoice extraction and review platform** that combines the power of Large Language Models (Claude 3.5 Haiku) with an intuitive user interface.
+
+</div>
+
+### What It Does
+
+<table>
+  <tr>
+    <td><strong>1️⃣ Upload</strong></td>
+    <td>📤 Users upload PDF/DOC/TXT files</td>
+  </tr>
+  <tr>
+    <td><strong>2️⃣ Extract</strong></td>
+    <td>🤖 Claude LLM extracts key fields with confidence scores</td>
+  </tr>
+  <tr>
+    <td><strong>3️⃣ Review</strong></td>
+    <td>👁️ Users review extracted data in a split-pane interface</td>
+  </tr>
+  <tr>
+    <td><strong>4️⃣ Track</strong></td>
+    <td>📊 Track all extraction versions and changes</td>
+  </tr>
+  <tr>
+    <td><strong>5️⃣ Audit</strong></td>
+    <td>📋 Complete activity logging for compliance</td>
+  </tr>
+</table>
+
+### Why Choose INDCR? ✨
+
+| Benefit | Description |
+|---------|-------------|
+| 🎯 **Accuracy** | AI-powered extraction with per-field confidence scores |
+| ⚡ **Speed** | Process invoices in seconds, not minutes |
+| 🔍 **Transparency** | See extraction confidence and source text |
+| 📊 **Analytics** | Track extraction performance over time |
+| 🔐 **Enterprise-Ready** | Multi-tenant, role-based access, audit logs |
+| 🌐 **Modern Stack** | REST API, real-time UI, cloud-ready |
 
 ---
 
-## 📋 Table of Contents
+## ✨ Features
 
-- [Overview](#overview)
-- [Tech Stack](#tech-stack)
-- [Project Structure](#project-structure)
-- [Quick Start](#quick-start)
-- [Backend Setup](#backend-setup)
-- [Frontend Setup](#frontend-setup)
-- [API Endpoints](#api-endpoints)
-- [Features](#features)
-- [Architecture](#architecture)
-- [Testing](#testing)
+### 🎯 Core Features
+- ✅ **AI-Powered Extraction** - Claude 3.5 Haiku extracts invoice fields automatically
+- ✅ **Confidence Scoring** - Each field includes a confidence score (0-100%)
+- ✅ **Interactive Dashboard** - Beautiful, responsive web interface
+- ✅ **PDF/DOC Support** - Upload PDF, DOCX, or TXT files
+- ✅ **Split-Pane Viewer** - Side-by-side PDF view and extracted fields
+- ✅ **Extraction History** - Version tracking for all extractions
+- ✅ **User Authentication** - Secure login with JWT tokens
+- ✅ **Activity Logging** - Complete audit trail of all actions
+- ✅ **Multi-Tenant Support** - Tenant isolation and management
+- ✅ **Field Comparison** - Compare extraction versions side-by-side
 
----
-
-## Overview
-
-**INDCR** is an intelligent document reviewer that:
-- 📄 Extracts invoice data using Claude LLM (Anthropic)
-- ✅ Provides per-field confidence scores
-- 📊 Displays extracted fields in an interactive dashboard
-- 👤 Manages multi-tenant document storage
-- 📝 Tracks audit trails and user activity
-- 🔄 Maintains document versions with extraction history
-- 🔐 Implements user authentication and authorization
-
-### Key Features
-- **AI-Powered Extraction**: Claude 3.5 Haiku extracts invoice fields with confidence scores
-- **Split-Pane Interface**: PDF viewer + extracted fields in real-time
-- **Activity Tracking**: User audit logs and event history
-- **Multi-Tenant**: Tenant isolation with document versioning
-- **Responsive UI**: Built with Next.js and modern styling
-- **API-First**: RESTful backend with FastAPI
+### 🚀 Advanced Features
+- 📊 **Batch Processing** - Upload multiple documents simultaneously
+- 🔄 **Re-extraction** - Re-process documents with updated models
+- 📋 **Custom Fields** - Define custom extraction fields per tenant
+- 🎯 **Review Workflow** - Approve, reject, or suggest corrections
+- 📈 **Analytics Dashboard** - Extraction performance metrics
+- 🔔 **Notifications** - Real-time notifications for extraction completion
+- 💾 **Backup & Recovery** - Automatic backups and recovery
+- 🚀 **Scalable** - Designed for enterprise scale
 
 ---
 
-## Tech Stack
+## 🔧 Tech Stack
 
-### Backend
-| Component | Technology |
-|-----------|-----------|
-| **Framework** | FastAPI 0.115+ |
-| **Language** | Python 3.11+ |
-| **Database** | MongoDB + Beanie ODM |
-| **LLM** | Anthropic Claude API |
-| **Async** | Motor (async MongoDB driver) |
-| **Validation** | Pydantic v2 |
-| **Server** | Uvicorn |
-| **Testing** | pytest, pytest-asyncio |
+### 🔧 Backend Stack
 
-### Frontend
-| Component | Technology |
-|-----------|-----------|
-| **Framework** | Next.js 14 |
-| **Language** | TypeScript |
-| **Styling** | styled-jsx + CSS |
-| **State** | Custom hooks + local storage |
-| **HTTP Client** | Axios |
-| **PDF Viewer** | React-based PDFViewer component |
+| Layer | Technology | Version | Why? |
+|-------|-----------|---------|------|
+| **Framework** | FastAPI | 0.115+ | 🚀 Fast, modern, async-first |
+| **Language** | Python | 3.11+ | 📚 Readable, powerful, productive |
+| **Database** | MongoDB | Latest | 📊 Flexible, scalable, document-based |
+| **ORM** | Beanie | Latest | ⚡ Async, type-safe MongoDB |
+| **LLM** | Claude 3.5 Haiku | Latest | 🤖 Powerful, accurate extraction |
+| **Auth** | JWT | Standard | 🔐 Secure, stateless authentication |
+| **Server** | Uvicorn | Latest | ⚙️ Lightning-fast ASGI server |
+
+### 🎨 Frontend Stack
+
+| Layer | Technology | Version | Why? |
+|-------|-----------|---------|------|
+| **Framework** | Next.js | 14 | ⚡ React with SSR & SSG |
+| **Language** | TypeScript | 5.0+ | 📝 Type-safe, developer-friendly |
+| **Styling** | styled-jsx | Latest | 🎨 Component-scoped CSS |
+| **HTTP** | Axios | Latest | 🔌 Promise-based API client |
+| **State** | React Hooks | Built-in | 🪝 Simple, powerful state mgmt |
+
+### 🌐 Infrastructure
+
+| Component | Technology | Purpose |
+|-----------|-----------|---------|
+| **API** | REST + JSON | Standard, stateless communication |
+| **Container** | Docker | Consistent deployment environment |
+| **Async** | Motor | Non-blocking MongoDB driver |
+| **Validation** | Pydantic v2 | Type validation & serialization |
+| **Testing** | pytest / Jest | Comprehensive test automation |
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 INDCR/
-├── backend/                      # FastAPI application
+│
+├── 📄 README.md                      # Project overview (this file)
+├── 📄 TODO.md                        # Development roadmap
+│
+├── 📂 backend/                       # FastAPI Backend
 │   ├── app/
-│   │   ├── main.py              # FastAPI app initialization
-│   │   ├── api/                 # Route handlers
-│   │   │   ├── activity.py      # User activity & audit logs
-│   │   │   ├── auth.py          # Login, register, logout
-│   │   │   ├── documents.py     # Upload, retrieve documents
-│   │   │   ├── extraction.py    # Extract invoice data
-│   │   │   ├── reviews.py       # Review/approval workflow
-│   │   │   ├── tenants.py       # Multi-tenant management
-│   │   │   ├── versions.py      # Document versioning
-│   │   │   ├── health.py        # Health check endpoint
-│   │   │   └── logout.py        # User logout
-│   │   ├── core/
-│   │   │   ├── config.py        # Environment & settings
-│   │   │   └── logging.py       # Structured logging
-│   │   ├── db/
-│   │   │   └── init_db.py       # Database initialization
-│   │   ├── models/              # Pydantic & Beanie models
-│   │   │   ├── user.py
-│   │   │   ├── tenant.py
-│   │   │   ├── document.py
-│   │   │   ├── extraction_run.py
-│   │   │   ├── review_version.py
-│   │   │   └── audit_event.py
-│   │   ├── services/            # Business logic
-│   │   │   ├── extraction_service.py  # LLM extraction
-│   │   │   └── llm_service.py         # Claude API wrapper
-│   │   └── jobs/                # Background tasks
+│   │   ├── main.py                  # FastAPI application setup
+│   │   ├── api/                     # API routes (8 modules)
+│   │   ├── services/                # Business logic
+│   │   ├── models/                  # Data models (6 models)
+│   │   ├── core/                    # Core functions
+│   │   ├── db/                      # Database operations
+│   │   └── jobs/                    # Background tasks
 │   ├── tests/
 │   │   └── test_llm_invoice_extraction.py
-│   ├── pyproject.toml           # Dependencies & config
-│   ├── requirements.txt
-│   └── README.md
+│   ├── pyproject.toml              # Project metadata & deps
+│   ├── requirements.txt            # Python dependencies
+│   ├── .env.example                # Environment variables
+│   └── README.md                   # Backend documentation
 │
-├── frontend/                     # Next.js React application
-│   ├── pages/
-│   │   ├── _app.tsx             # App wrapper
-│   │   ├── index.tsx            # Home/login
-│   │   ├── login.tsx            # Login page
-│   │   ├── register.tsx         # Registration page
-│   │   ├── profile.tsx          # User profile
-│   │   ├── dashboard.tsx        # Main dashboard
-│   │   ├── file.tsx             # File detail page
-│   │   ├── [id].tsx             # Dynamic document view
-│   │   └── documents/           # Document listing
-│   ├── components/              # React components
-│   │   ├── layout.tsx           # Main layout wrapper
-│   │   ├── topbar.tsx           # Navigation topbar
-│   │   ├── PDFViewer.tsx        # PDF display
-│   │   ├── ExtractedFields.tsx  # Extracted data display
-│   │   ├── DiffViewer.tsx       # Version comparison
-│   │   ├── VersionHistory.tsx   # Document versions
-│   │   ├── ConfidenceBadge.tsx  # Confidence indicator
-│   │   └── [id].tsx             # Dynamic routes
-│   ├── services/
-│   │   ├── api.ts               # HTTP client (axios)
-│   │   └── auth.ts              # Auth helpers
-│   ├── store/
-│   │   └── authStore.ts         # Auth state
-│   ├── hooks/
-│   │   └── useDocuments.ts      # Document hooks
-│   ├── styles/                  # CSS modules
-│   │   ├── globals.css
-│   │   ├── dashboard.css
-│   │   ├── document.css
-│   │   └── pdfviewer.css
-│   ├── package.json
-│   ├── tsconfig.json
-│   └── next-env.d.ts
+├── 📂 frontend/                     # Next.js Frontend
+│   ├── pages/                      # React page components
+│   ├── components/                 # Main UI components
+│   ├── services/                   # Service functions
+│   ├── store/                      # State storage
+│   ├── hooks/                      # Custom hooks
+│   ├── styles/                     # Styling files
+│   ├── package.json               # NPM dependencies
+│   ├── tsconfig.json              # TypeScript config
+│   ├── next.config.js             # Next.js config
+│   └── README.md                  # Frontend documentation
 │
-├── shared/                      # Shared types (optional)
-├── README.md                    # This file
-└── TODO.md                      # Development roadmap
+├── 📂 docs/                        # Project documentation
+│   ├── README.md                  # Docs index
+│   ├── ARCHITECTURE.md            # System design
+│   ├── API_DOCUMENTATION.md       # API reference
+│   ├── BACKEND_GUIDE.md           # Backend guide
+│   ├── FRONTEND_GUIDE.md          # Frontend guide
+│   ├── DATABASE_SCHEMA.md         # Data models
+│   ├── DEPLOYMENT.md              # Deployment guide
+│   └── CONTRIBUTING.md            # Contributing guide
+│
+└── 📂 shared/                      # Shared resources (optional)
 ```
 
 ---
 
-## Quick Start
+## ⚡ Quick Start
 
-### Prerequisites
-- **Python** 3.11+
-- **Node.js** 18+
-- **MongoDB** 4.4+ (or set `SKIP_DB=true` in `.env` for API-only testing)
-- **Anthropic API Key** (from https://console.anthropic.com)
+### 📋 Prerequisites
 
-### 1️⃣ Clone & Navigate
+- **Node.js** 18+ (for frontend)
+- **Python** 3.11+ (for backend)
+- **MongoDB** 4.4+ (or MongoDB Atlas account)
+- **Anthropic API Key**
+- **Git** for version control
+
+### 🚀 Get Up & Running
+
 ```bash
-cd "c:\Users\pavan\Documents\INDCR pro1\INDCR"
+# 1️⃣ Clone repository
+git clone https://github.com/yourusername/indcr.git
+cd INDCR
+
+# 2️⃣ Setup Backend (Terminal 1)
+cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1      # Windows PowerShell
+# OR on Linux/Mac:
+# source venv/bin/activate
+
+pip install -r requirements.txt
+copy .env.example .env
+# Edit .env with your keys:
+# ANTHROPIC_API_KEY=sk-ant-...
+# MONGODB_URI=mongodb://...
+
+python -m uvicorn app.main:app --reload --port 8000
+
+# 3️⃣ Setup Frontend (Terminal 2)
+cd frontend
+npm install
+npm run dev
+
+# 4️⃣ Open browser
+# Frontend: http://localhost:3000
+# API Docs: http://localhost:8000/docs
 ```
 
-### 2️⃣ Backend + Frontend (Simultaneous)
-Open **two terminals**:
+### 🎯 Access the Application
 
-**Terminal 1 - Backend:**
+| Service | URL | Purpose |
+|---------|-----|---------|
+| 🖥️ **Frontend** | http://localhost:3000 | User interface |
+| 🔌 **API** | http://localhost:8000 | Backend REST API |
+| 📚 **API Docs** | http://localhost:8000/docs | Interactive Swagger UI |
+| 📋 **Schema** | http://localhost:8000/openapi.json | OpenAPI specification |
+
+---
+
+## 📋 Installation Guide
+
+### 🔧 Backend Setup
+
+> 💡 Complete step-by-step setup for the FastAPI backend
+
 ```bash
 cd backend
 python -m venv .venv
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1      # Windows PowerShell
+# OR on Linux/Mac:
+# source venv/bin/activate
+
 pip install -r requirements.txt
+copy .env.example .env
+# Edit .env with your settings
 ```
 
-Create `backend/.env`:
+**Environment variables example**
+
 ```env
-ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_API_KEY=sk-ant-your-key-here
 ANTHROPIC_MODEL=claude-3-5-haiku-latest
 MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB=idc_dev
-SKIP_DB=false
+LOG_LEVEL=INFO
 ```
 
-Start server:
 ```bash
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-**Terminal 2 - Frontend:**
+### 🎨 Frontend Setup
+
+> 💡 Complete step-by-step setup for the Next.js frontend
+
 ```bash
 cd frontend
 npm install
+```
+
+Create `.env.local` with:
+
+```env
+NEXT_PUBLIC_API_URL=http://localhost:8000
+```
+
+Then run:
+
+```bash
 npm run dev
 ```
 
-### 3️⃣ Access the App
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs (Swagger UI)
-
 ---
 
-## Backend Setup
+### 📦 Database Setup
 
-### Detailed Steps
+> 💡 Setup MongoDB locally or in the cloud
 
-1. **Create Virtual Environment**
-   ```powershell
-   cd backend
-   python -m venv .venv
-   .\.venv\Scripts\Activate.ps1
-   ```
+**Option 1: Local MongoDB**
 
-2. **Install Dependencies**
-   ```powershell
-   pip install -r requirements.txt
-   ```
-
-3. **Configure `.env`**
-   ```env
-   # LLM Configuration
-   ANTHROPIC_API_KEY=your_key_here
-   ANTHROPIC_MODEL=claude-3-5-haiku-latest
-   
-   # Database Configuration
-   MONGODB_URI=mongodb://localhost:27017
-   MONGODB_DB=idc_dev
-   SKIP_DB=false          # Set to true to skip DB (API only)
-   
-   # Server Configuration
-   DEBUG=false
-   LOG_LEVEL=INFO
-   ```
-
-4. **Run Database Migrations** (if needed)
-   ```powershell
-   python app/db/init_db.py
-   ```
-
-5. **Start Development Server**
-   ```powershell
-   python -m uvicorn app.main:app --reload --port 8000
-   ```
-
-### Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ANTHROPIC_API_KEY` | Anthropic API key | Required |
-| `ANTHROPIC_MODEL` | Claude model version | `claude-3-5-haiku-latest` |
-| `MONGODB_URI` | MongoDB connection string | `mongodb://localhost:27017` |
-| `MONGODB_DB` | Database name | `idc_dev` |
-| `SKIP_DB` | Skip database (API-only mode) | `false` |
-| `DEBUG` | Debug mode | `false` |
-| `LOG_LEVEL` | Logging level | `INFO` |
-
----
-
-## Frontend Setup
-
-### Detailed Steps
-
-1. **Install Dependencies**
-   ```bash
-   cd frontend
-   npm install
-   ```
-
-2. **Configure API Endpoint**
-   Edit `frontend/services/api.ts`:
-   ```typescript
-   const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-   ```
-
-3. **Run Development Server**
-   ```bash
-   npm run dev
-   ```
-   Access at: http://localhost:3000
-
-4. **Build for Production**
-   ```bash
-   npm run build
-   npm start
-   ```
-
-### NPM Scripts
-
-| Command | Purpose |
-|---------|---------|
-| `npm run dev` | Start dev server (http://localhost:3000) |
-| `npm run build` | Build for production |
-| `npm start` | Start production server |
-| `npm run lint` | Run ESLint |
-| `npm run type-check` | Run TypeScript check |
-
----
-
-## API Endpoints
-
-### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/auth/register` | Register new user |
-| `POST` | `/auth/login` | Login user |
-| `POST` | `/auth/logout` | Logout user |
-
-### Documents
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/documents/upload` | Upload invoice file (PDF/DOC/TXT) |
-| `GET` | `/documents/{document_id}` | Get document details |
-| `GET` | `/documents/list` | List all documents |
-
-### Extraction
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/extraction/extract` | Trigger extraction on document |
-| `GET` | `/extraction/{extraction_id}` | Get extraction result |
-| `GET` | `/versions/latest/{document_id}` | Get latest extraction version |
-
-### Versions & Reviews
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/versions/list/{document_id}` | List all versions of a document |
-| `POST` | `/reviews/approve` | Approve extracted data |
-| `POST` | `/reviews/reject` | Reject extracted data |
-
-### Activity & Audit
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/activity/by-email/{email}` | Get user activity log |
-| `GET` | `/activity/audit/{document_id}` | Get document audit trail |
-
-### System
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Health check |
-
-### Example: Upload & Extract
 ```bash
-curl -X POST "http://localhost:8000/documents/upload" \
-  -F "tenant_id=default" \
-  -F "filename=invoice.pdf" \
-  -F "user_email=user@example.com" \
-  -F "file=@invoice.pdf"
+# Install MongoDB Community Edition
+# Start MongoDB service
+mongod
+
+# Verify connection
+mongosh mongodb://localhost:27017
 ```
 
-Response:
-```json
+**Option 2: MongoDB Atlas**
+
+1. Go to https://www.mongodb.com/cloud/atlas
+2. Create a free cluster
+3. Obtain the connection string
+4. Update `MONGODB_URI` in `.env`
+
+Example:
+
+```env
+MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/?retryWrites=true&w=majority
+```
+
+---
+
+## 🎮 Running the Project
+
+### 💻 Development Mode
+
+**Terminal 1: Backend API**
+
+```bash
+cd backend
+.\.venv\Scripts\Activate.ps1      # Windows PowerShell
+python -m uvicorn app.main:app --reload --port 8000
+```
+
+**Terminal 2: Frontend UI**
+
+```bash
+cd frontend
+npm run dev
+```
+
+**Terminal 3: Database**
+
+```bash
+mongod
+```
+
+### 🏗️ Production Build
+
+```bash
+cd frontend
+npm run build
+npm start
+
+cd backend
+gunicorn "app.main:app" -w 4 -k uvicorn.workers.UvicornWorker --port 8000
+```
+
+---
+
+## 🔌 API Overview
+
+### 🔐 Authentication Endpoints
+
+**Register New User**
+
+```bash
+POST /auth/register
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "secure_password_123",
+  "full_name": "John Doe"
+}
+```
+
+**Login**
+
+```bash
+POST /auth/login
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "password": "secure_password_123"
+}
+```
+
+### 📤 Document Upload
+
+**Upload Invoice**
+
+```bash
+POST /documents/upload
+Authorization: Bearer <your_token>
+Content-Type: multipart/form-data
+
+Form Data:
+- file: <PDF/DOCX/TXT file>
+- filename: invoice-2024-01.pdf
+- tenant_id: default
+- user_email: user@example.com
+```
+
+### 🤖 AI Extraction
+
+**Extract Invoice Data**
+
+```bash
+POST /extraction/extract
+Authorization: Bearer <your_token>
+Content-Type: application/json
+
 {
   "document_id": "507f1f77bcf86cd799439011",
-  "status": "extracted",
+  "re_extract": false
+}
+```
+
+### 📈 Extracted Result Sample
+
+```json
+{
+  "extraction_id": "extraction_001",
+  "status": "completed",
+  "processing_time_ms": 2340,
   "extraction": {
     "invoice_number": {
-      "value": "INV-1001",
+      "value": "INV-2024-001",
       "confidence": 0.96
     },
     "vendor_name": {
-      "value": "Acme Supplies",
+      "value": "Acme Supplies Inc",
       "confidence": 0.91
     },
     "invoice_total": {
-      "value": "INR 12,500.00",
-      "confidence": 0.88
+      "value": "$5,250.00",
+      "confidence": 0.89
+    },
+    "invoice_date": {
+      "value": "2024-01-15",
+      "confidence": 0.94
     }
   }
 }
@@ -370,179 +447,73 @@ Response:
 
 ---
 
-## Features
+## ✅ Testing
 
-### ✅ Implemented
-- ✔️ User registration & login with email
-- ✔️ Invoice PDF/DOC/TXT upload
-- ✔️ Claude LLM extraction with per-field confidence
-- ✔️ Multi-tenant document management
-- ✔️ Document versioning with history
-- ✔️ Activity audit trail & event logging
-- ✔️ Responsive split-pane dashboard
-- ✔️ Extracted fields display with confidence badges
-- ✔️ PDF viewer integration
-- ✔️ User profile management
+### 🐍 Backend Testing
 
-### 🚀 In Progress / Planned
-- [ ] Advanced extraction with custom prompts
-- [ ] Batch processing for multiple invoices
-- [ ] Export to Excel/CSV
-- [ ] Email notifications
-- [ ] Role-based access control (RBAC)
-- [ ] Advanced analytics & reporting
-- [ ] OCR preprocessing
-- [ ] Custom field mapping
-
----
-
-## Architecture
-
-### High-Level Flow
-
-```
-User (Frontend) 
-    ↓
-Next.js Dashboard
-    ↓ (HTTP/JSON)
-FastAPI Backend
-    ↓
-LLM Service (Anthropic Claude)
-    ↓
-MongoDB (Storage)
-    ↓ (Response)
-Extracted Fields → Frontend Display
-```
-
-### Key Components
-
-**Frontend:**
-- **Dashboard**: Main hub with sidebar navigation
-- **Activity Panel**: Shows extraction events and audit logs
-- **Extracted Fields**: Displays OCR results with confidence
-- **PDF Viewer**: Interactive document preview
-- **Auth Store**: Manages user session
-
-**Backend:**
-- **API Layer**: RESTful endpoints via FastAPI
-- **Services**: Business logic (LLM extraction, versioning)
-- **Models**: Pydantic schemas & Beanie ODM models
-- **Database**: MongoDB for persistence
-- **LLM Integration**: Claude API wrapper with retry logic
-
----
-
-## Testing
-
-### Backend Tests
-
-Run all tests:
 ```bash
 cd backend
 pytest
-```
-
-Run specific test:
-```bash
 pytest tests/test_llm_invoice_extraction.py -v
+pytest --cov=app tests/ --cov-report=html
 ```
 
-Test coverage:
-```bash
-pytest --cov=app tests/
-```
+### 🎨 Frontend Testing
 
-**Note**: Tests mock the Anthropic API call and do not require a live key.
-
-### Frontend Testing (TBD)
-- Unit tests with Jest/Testing Library
-- E2E tests with Playwright
-
----
-
-## Development Workflow
-
-### Making Changes
-
-**Backend:**
-1. Edit files in `backend/app/`
-2. Dev server auto-reloads
-3. Check API docs: http://localhost:8000/docs
-
-**Frontend:**
-1. Edit files in `frontend/pages/` or `frontend/components/`
-2. Dev server auto-refreshes
-3. Check browser: http://localhost:3000
-
-### Code Style
-
-**Backend:**
-```bash
-cd backend
-black .                 # Format code
-ruff check .           # Lint
-mypy app/              # Type check
-```
-
-**Frontend:**
 ```bash
 cd frontend
-npm run lint           # ESLint
-npm run type-check     # TypeScript
+npm test
+npm test -- --watch
+npm test -- --coverage
+```
+
+### 🔌 API Testing
+
+**Using cURL**
+
+```bash
+curl -X POST "http://localhost:8000/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password"}'
 ```
 
 ---
 
-## Deployment
+## 🚀 Deployment
 
-### Production Backend
-```bash
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
+### Quick Deployment
 
-### Production Frontend
+**Frontend (Vercel)**
+
 ```bash
 cd frontend
 npm run build
-npm start
+vercel deploy
 ```
 
-For cloud deployment (AWS/GCP/Azure), consult platform-specific guides.
+**Backend (Railway / Render)**
+
+```bash
+git push main
+```
+
+### Docker Deployment
+
+```bash
+docker build -t indcr-backend ./backend
+docker build -t indcr-frontend ./frontend
+docker-compose up -d
+docker-compose logs -f
+```
 
 ---
 
-## Troubleshooting
+## 🤝 Contributing
 
-| Issue | Solution |
-|-------|----------|
-| **MongoDB connection fails** | Ensure MongoDB is running: `mongod` or set `SKIP_DB=true` |
-| **Anthropic API errors** | Verify API key in `.env` and account has credits |
-| **Frontend can't reach backend** | Check backend URL in `services/api.ts` |
-| **Port 3000/8000 in use** | Change port: `npm run dev -- -p 3001` or `--port 8001` |
-| **Module not found errors** | Run `npm install` (frontend) or activate venv (backend) |
+If you want to contribute, please use branches, write clear commit messages, and add tests for new features.
 
 ---
 
-## Project Maintainers
+## 📞 Support
 
-- **Backend**: Python/FastAPI
-- **Frontend**: React/Next.js
-- **LLM Integration**: Anthropic Claude API
-
----
-
-## License
-
-Internal project. All rights reserved.
-
----
-
-## Support & Documentation
-
-- **API Docs**: http://localhost:8000/docs
-- **Backend README**: [backend/README.md](backend/README.md)
-- **Frontend Config**: Check `frontend/package.json`
-- **MongoDB Docs**: https://docs.mongodb.com/
-- **Anthropic API**: https://docs.anthropic.com/
-
+For support, consult the documentation in `docs/`, open an issue, or email support@indcr.com.
