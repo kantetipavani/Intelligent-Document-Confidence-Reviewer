@@ -56,6 +56,7 @@ def extract_text_from_document(
 
 
 def extract_text_from_pdf(file_bytes: bytes) -> str:
+    """Fast PDF text extraction (works only for text-layer PDFs)."""
     try:
         from pypdf import PdfReader
     except ImportError as exc:
@@ -64,6 +65,79 @@ def extract_text_from_pdf(file_bytes: bytes) -> str:
     reader = PdfReader(BytesIO(file_bytes))
     pages = [page.extract_text() or "" for page in reader.pages]
     return "\n".join(page.strip() for page in pages if page.strip())
+
+
+def _looks_like_empty_text(text: str) -> bool:
+    return not (text or "").strip()
+
+
+def _ocr_images_from_pdf(file_bytes: bytes) -> str:
+    """OCR scanned PDFs by rasterizing pages and running Tesseract."""
+    try:
+        from pdf2image import convert_from_bytes
+    except ImportError as exc:
+        raise RuntimeError(
+            "OCR for scanned PDFs requires pdf2image. Install backend requirements."
+        ) from exc
+
+    try:
+        import pytesseract
+    except ImportError as exc:
+        raise RuntimeError(
+            "OCR requires pytesseract. Install backend requirements and ensure Tesseract is installed on the system."
+        ) from exc
+
+    images = convert_from_bytes(file_bytes)
+    chunks: list[str] = []
+    for img in images:
+        chunks.append(pytesseract.image_to_string(img) or "")
+    return "\n".join(c.strip() for c in chunks if c.strip())
+
+
+def _ocr_image_bytes(file_bytes: bytes) -> str:
+    """OCR image bytes (png/jpg/webp/etc)."""
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise RuntimeError("OCR requires Pillow. Install backend requirements.") from exc
+
+    try:
+        import pytesseract
+    except ImportError as exc:
+        raise RuntimeError(
+            "OCR requires pytesseract. Install backend requirements and ensure Tesseract is installed on the system."
+        ) from exc
+
+    img = Image.open(BytesIO(file_bytes))
+    return pytesseract.image_to_string(img) or ""
+
+
+async def _maybe_ocr_fallback(
+    *,
+    document_text: str,
+    file_bytes: bytes,
+    content_type: str | None,
+    filename: str,
+) -> str:
+    """Run OCR fallback if fast extraction produced empty text."""
+    if not _looks_like_empty_text(document_text):
+        return document_text
+
+    ct = (content_type or "").lower()
+    name = (filename or "").lower()
+
+    # PDFs: render pages -> OCR
+    if ct == "application/pdf" or name.endswith(".pdf"):
+        return _ocr_images_from_pdf(file_bytes)
+
+    # Common images: decode -> OCR
+    if ct.startswith("image/") or any(
+        name.endswith(ext)
+        for ext in [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"]
+    ):
+        return _ocr_image_bytes(file_bytes)
+
+    return document_text
 
 
 async def extract_invoice_from_document_bytes(
@@ -77,40 +151,60 @@ async def extract_invoice_from_document_bytes(
         content_type=content_type,
         filename=filename,
     )
+
+    # If the extracted text is empty (common for scanned PDFs/images), run OCR fallback.
+    document_text = await _maybe_ocr_fallback(
+        document_text=document_text,
+        file_bytes=file_bytes,
+        content_type=content_type,
+        filename=filename,
+    )
+
     return await extract_invoice_fields(document_text)
 
 
 async def extract_invoice_fields(document_text: str) -> ExtractionResult:
-    # If Anthropic key is not configured, fall back to a local heuristic extractor
-    # so the API remains functional in offline/dev environments.
+    """Extract invoice fields.
+
+    Important: frontend expects a generic `fields` map using keys like:
+      invoice_no, date, gstin, vendor, amount, status
+    """
+
+    # Always try local heuristic first. This keeps the API functional even when
+    # OCR/LLM dependencies or API keys are missing.
+    local_fields: dict[str, Any] | None = None
+    try:
+        from app.services.extraction_service import document_text_to_extraction_result
+
+        local = document_text_to_extraction_result(document_text)
+        local_fields = local.get("fields", {}) or {}
+    except Exception:
+        local_fields = None
+
+    # If Anthropic key is not configured, rely solely on local heuristic.
     if not settings.anthropic_api_key:
-        try:
-            from app.services.extraction_service import document_text_to_extraction_result
-
-            local = document_text_to_extraction_result(document_text)
-            fields = local.get("fields", {})
-            invoice_no = fields.get("invoice_no", {})
-            vendor = fields.get("vendor", {})
-            amount = fields.get("amount", {})
-
-            return ExtractionResult(
-                invoice_number={
-                    "value": invoice_no.get("value", ""),
-                    "confidence": float(invoice_no.get("confidence", 0.0)),
-                },
-                vendor_name={
-                    "value": vendor.get("value", ""),
-                    "confidence": float(vendor.get("confidence", 0.0)),
-                },
-                invoice_total={
-                    "value": amount.get("value", ""),
-                    "confidence": float(amount.get("confidence", 0.0)),
-                },
-                fields=fields or {},
-            )
-        except Exception:
-            # If local extraction fails for any reason, raise a clear error
+        if local_fields is None:
             raise RuntimeError("no Anthropic API key and local extraction failed")
+
+        invoice_no = local_fields.get("invoice_no", {})
+        vendor = local_fields.get("vendor", {})
+        amount = local_fields.get("amount", {})
+
+        return ExtractionResult(
+            invoice_number={
+                "value": invoice_no.get("value", ""),
+                "confidence": float(invoice_no.get("confidence", 0.0)),
+            },
+            vendor_name={
+                "value": vendor.get("value", ""),
+                "confidence": float(vendor.get("confidence", 0.0)),
+            },
+            invoice_total={
+                "value": amount.get("value", ""),
+                "confidence": float(amount.get("confidence", 0.0)),
+            },
+            fields=local_fields,
+        )
 
     from anthropic import AsyncAnthropic
 
@@ -132,7 +226,42 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
     )
 
     text = _message_text(response)
-    return parse_extraction_json(text)
+
+    # Try to parse the LLM output. If it fails, fall back to local heuristic
+    # so the UI doesn't show "OCR extraction failed".
+    try:
+        parsed = parse_extraction_json(text)
+    except Exception:
+        if local_fields is not None:
+            invoice_no = local_fields.get("invoice_no", {})
+            vendor = local_fields.get("vendor", {})
+            amount = local_fields.get("amount", {})
+            return ExtractionResult(
+                invoice_number={
+                    "value": invoice_no.get("value", ""),
+                    "confidence": float(invoice_no.get("confidence", 0.0)),
+                },
+                vendor_name={
+                    "value": vendor.get("value", ""),
+                    "confidence": float(vendor.get("confidence", 0.0)),
+                },
+                invoice_total={
+                    "value": amount.get("value", ""),
+                    "confidence": float(amount.get("confidence", 0.0)),
+                },
+                fields=local_fields,
+            )
+        raise
+
+    # Ensure the generic `fields` map exists for the frontend.
+    # Keep behavior compatible with unit tests: if the LLM does not provide
+    # `fields`, leave it empty. (Frontend can fall back to top-level fields.)
+    if parsed.fields is None:  # type: ignore[comparison-overlap]
+        parsed.fields = {}
+
+    return parsed
+
+
 
 
 def parse_extraction_json(raw_text: str) -> ExtractionResult:
@@ -173,6 +302,8 @@ def _normalize_payload(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+
+
 def _normalize_field(value: Any) -> dict[str, Any]:
     if isinstance(value, dict):
         return {
@@ -193,3 +324,4 @@ def _clamp_confidence(value: Any) -> float:
         return 0.0
 
     return max(0.0, min(1.0, confidence))
+

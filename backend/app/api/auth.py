@@ -58,6 +58,15 @@ async def register(payload: RegisterPayload) -> AuthResponse:
             detail="password must be at least 6 characters",
         )
 
+    # bcrypt (via passlib) supports max 72 bytes input; long passwords crash hashing.
+    # Bytes length matters, not just character count.
+    if len(payload.password.encode("utf-8")) > 72:
+        raise HTTPException(
+            status_code=400,
+            detail="password must be at most 72 bytes (use shorter password)",
+        )
+
+
     existing = await User.find_one(User.email == email)
     if existing:
         raise HTTPException(status_code=409, detail="user already exists")
@@ -107,10 +116,49 @@ async def change_password(
 
 @router.post("/login", response_model=AuthResponse)
 async def login(payload: LoginPayload) -> AuthResponse:
+    import logging
+    import re
+
     email = normalize_email(payload.email)
+
+    # Try exact match first (fast + avoids any regex edge-cases).
     user = await User.find_one(User.email == email)
-    if not user or not verify_password(payload.password, user.password_hash):
+    if not user:
+        # Case-insensitive fallback for casing mismatches.
+        email_regex = f"^{re.escape(email)}$"
+        user = await User.find_one(User.email.regex(email_regex, "i"))
+
+
+    if not user:
+        logging.getLogger(__name__).warning(
+            "login failed: user not found for email=%s (normalized=%s)",
+            payload.email,
+            email,
+        )
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    try:
+        is_valid = verify_password(payload.password, user.password_hash)
+    except Exception:
+        # If the stored hash is incompatible/unreadable (e.g., bcrypt/passlib mismatch), avoid 500.
+        logging.getLogger(__name__).exception(
+            "login failed: password verification error for email=%s tenant_id=%s",
+            email,
+            getattr(user, "tenant_id", None),
+        )
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+    if not is_valid:
+        logging.getLogger(__name__).warning(
+            "login failed: password mismatch for email=%s tenant_id=%s role=%s",
+            email,
+            getattr(user, "tenant_id", None),
+            getattr(user, "role", None),
+        )
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+
+
+
 
     try:
         await record_event(

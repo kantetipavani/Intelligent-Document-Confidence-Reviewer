@@ -1,5 +1,7 @@
-- [ ] Inspect backend confidence computation and frontend confidence-to-badge mapping
-- [x] Update confidence heuristic in backend/app/services/extraction_service.py to increase confidence for structured fields
-- [ ] Run backend compile/tests to ensure confidence code is syntactically correct
-- [ ] Verify frontend displays improved confidence percentages (e.g., high/medium/low thresholds)
+# TODO
+
+- [x] Normalize extraction response fields in `frontend/pages/[id].tsx` so `ExtractedFields` receives the expected flat field map.
+- [x] Make confidence rendering robust in `frontend/components/ExtractedFields.tsx` (support 0..1 and 0..100 confidence).
+- [ ] Manually verify on a document review page that the extracted invoice fields table populates.
+
 

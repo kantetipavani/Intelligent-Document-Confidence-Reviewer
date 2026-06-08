@@ -52,13 +52,19 @@ export default function DocumentReviewPage() {
     setDocument(response.data);
 
     const extraction = response.data.extraction;
+
+    // `ExtractedFields` expects a flat object like:
+    // { invoice_number: {value, confidence}, date: {...}, ... }
+    // Backend extraction responses may include:
+    //  - extraction.fields (preferred)
+    //  - other metadata alongside fields
+    // Normalize defensively so the table always has the right shape.
     const normalizedFields =
-      extraction?.fields && typeof extraction.fields === "object"
-        ? {
-            ...extraction.fields,
-            ...extraction,
-          }
-        : extraction;
+      extraction && typeof extraction === "object"
+        ? extraction.fields && typeof extraction.fields === "object"
+          ? extraction.fields
+          : extraction
+        : {};
 
     setFields(normalizedFields);
   };

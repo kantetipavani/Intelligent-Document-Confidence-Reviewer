@@ -52,7 +52,13 @@ export default function ExtractedFields({
 
   const getConfidencePercent = (field: any) => {
     const raw = Number(field?.confidence ?? 0);
-    return Math.max(0, Math.min(100, Math.round(raw * 100)));
+
+    // Support both formats:
+    //  - 0..1 (typical model output)
+    //  - 0..100 (some pipelines already scale)
+    const percent = raw <= 1 ? raw * 100 : raw;
+
+    return Math.max(0, Math.min(100, Math.round(percent)));
   };
 
   return (
