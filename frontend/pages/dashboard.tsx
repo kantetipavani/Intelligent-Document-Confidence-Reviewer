@@ -366,12 +366,14 @@ export default function Dashboard() {
             <div>
 
               <h1>
-                Intelligent Document Reviewer
+                Intelligent Document Reviewer 
               </h1>
+             
 
               <p>
-                AI Powered Invoice Review Platform
+                &nbsp; AI Powered Invoice Review Platform
               </p>
+             
 
             </div>
 
@@ -766,7 +768,7 @@ export default function Dashboard() {
         .sidebar {
           width: 300px;
           background:
-            rgba(1,74,74,0.36);
+            rgb(1, 2, 12);
 
           padding: 28px;
 
@@ -804,12 +806,14 @@ export default function Dashboard() {
         }
 
         .logo-section h2 {
+          
           margin: 0;
           color: white;
         }
 
         .logo-section p {
-          margin: 4px 0 0;
+          line-height: 1.2;
+          margin-top: 2px;
           color: rgba(255,255,255,0.8);
         }
 
@@ -838,7 +842,7 @@ export default function Dashboard() {
           background:
             linear-gradient(
               135deg,
-              #6366f1,
+             #6c92e6,
               #8b5cf6
             );
 
@@ -851,10 +855,14 @@ export default function Dashboard() {
           flex: 1;
           padding: 32px;
 
-          background: url("https://www.ocft.com/en/upload/2024-09-02/17252558633938a89b1c28ba41f9c730191b1434c616d86.png");
-          background-size: cover;
-    background-position: center;
-    background-repeat: no-repeat;
+         background:
+            linear-gradient(
+              135deg,
+              #2058d0,
+               #6c92e6,
+              #aca0f7
+            );
+          
     
           
           }
@@ -871,11 +879,18 @@ export default function Dashboard() {
 
         .topbar h1 {
           margin: 0;
-          color: #0f172a;
+          color: #000000;
+          width:100%;
         }
 
         .topbar p {
-          color: #64748b;
+          display: flex;
+          align-items: center;
+          justify-content: top;
+
+          color: white;
+          font-weight: 500;
+          font-size: 20px;
         }
 
         .topbar-right {
@@ -965,15 +980,15 @@ export default function Dashboard() {
         }
 
         .blue {
-          background: #dbeafe;
+          background: white;
         }
 
         .purple {
-          background: #ede9fe;
+          background: white;
         }
 
         .orange {
-          background: #cffafe;
+          background: white;
         }
 
         /* REVIEWER */

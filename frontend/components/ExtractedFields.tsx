@@ -133,34 +133,41 @@ export default function ExtractedFields({
         .fields-table td {
           text-align: left;
           padding: 14px 16px;
-          border-bottom: 1px solid #e2e8f0;
+          border-bottom: 1px solid var(--bb-border);
         }
 
         .fields-table th {
-          background: #f8fafc;
-          color: #334155;
+          background: rgba(15, 23, 42, 0.04);
+          color: var(--bb-text-muted);
           font-size: 13px;
           letter-spacing: 0.02em;
           text-transform: uppercase;
         }
 
         .fields-table tbody tr:nth-child(even) {
-          background: #fafbff;
+          background: rgba(99, 102, 241, 0.04);
         }
 
         .fields-table input {
           width: 100%;
           padding: 10px 12px;
-          border: 1px solid #cbd5e1;
+          border: 1px solid rgba(148, 163, 184, 0.45);
           border-radius: 12px;
-          background: #ffffff;
-          color: #0f172a;
+          background: var(--bb-surface);
+          color: var(--bb-text);
           font-size: 14px;
+          outline: none;
+          transition: box-shadow 0.15s ease, border-color 0.15s ease;
+        }
+
+        .fields-table input:focus {
+          border-color: rgba(99, 102, 241, 0.85);
+          box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
         }
 
         .confidence-high {
-          background: #dcfce7;
-          color: #166534;
+          background: rgba(34, 197, 94, 0.16);
+          color: #16a34a;
           padding: 6px 10px;
           border-radius: 999px;
           font-weight: 700;
@@ -168,8 +175,8 @@ export default function ExtractedFields({
         }
 
         .confidence-medium {
-          background: #fef9c3;
-          color: #92400e;
+          background: rgba(245, 158, 11, 0.16);
+          color: #ca8a04;
           padding: 6px 10px;
           border-radius: 999px;
           font-weight: 700;
@@ -177,13 +184,14 @@ export default function ExtractedFields({
         }
 
         .confidence-low {
-          background: #fee2e2;
-          color: #991b1b;
+          background: rgba(239, 68, 68, 0.14);
+          color: #dc2626;
           padding: 6px 10px;
           border-radius: 999px;
           font-weight: 700;
           display: inline-block;
         }
+
       `}</style>
     </div>
   );

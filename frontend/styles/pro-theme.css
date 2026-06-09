@@ -1,0 +1,23 @@
+:root {
+  --bb-bg: #0b1220;
+  --bb-surface: rgba(255, 255, 255, 0.9);
+  --bb-surface-2: rgba(255, 255, 255, 0.72);
+
+  --bb-text: #0f172a;
+  --bb-text-muted: #475569;
+
+  --bb-primary: #6366f1;
+  --bb-primary-2: #8b5cf6;
+
+  --bb-border: rgba(148, 163, 184, 0.35);
+
+  --bb-radius: 16px;
+  --bb-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
+
+  --bb-focus: rgba(99, 102, 241, 0.35);
+}
+
+body {
+  color: var(--bb-text);
+}
+

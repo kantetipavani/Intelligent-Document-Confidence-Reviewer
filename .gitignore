@@ -1,4 +1,12 @@
 backend/**/__pycache__/
 backend/**/*.pyc
+backend/.env
+backend/.venv
+backend/.env
+backend/.venv
+backend/.pytest_cache/
 frontend/.next/
 frontend/node_modules/
+
+
+

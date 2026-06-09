@@ -24,6 +24,13 @@ async def approve_review(
     payload: ApproveReviewPayload,
     current_user: User = Depends(get_current_user),
 ) -> dict:
+    # RBAC: only reviewer/admin can approve.
+    # (If you introduce more roles later, extend this list.)
+    if current_user.role not in {"reviewer", "admin"}:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient privileges")
+
     doc = await Document.get(payload.document_id)
     if not doc:
         raise HTTPException(status_code=404, detail="document not found")

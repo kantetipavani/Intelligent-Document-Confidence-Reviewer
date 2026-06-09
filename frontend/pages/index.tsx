@@ -143,8 +143,8 @@ export default function Home() {
           background:
             linear-gradient(
               135deg,
-              #eef3ff,
-              #dfe8ff,
+              #6c92e6,
+               #6c92e6,
               #ece9ff
             );
 
@@ -152,7 +152,7 @@ export default function Home() {
           flex-direction: column;
           justify-content: center;
           align-items: center;
-
+          
           padding: 40px;
           font-family: Arial, sans-serif;
         }
@@ -177,7 +177,7 @@ export default function Home() {
         .left-section p {
           font-size: 24px;
           line-height: 1.7;
-          color: #5b6478;
+          color: #fbfbfb;
           margin-bottom: 40px;
           max-width: 650px;
         }

@@ -7,12 +7,16 @@ from app.core.config import settings
 from app.core.security import get_current_user
 
 
+
+
+
+
 from app.models.document import Document
 from app.models.user import User
 from app.services.llm_service import ExtractionResult, extract_invoice_from_document_bytes
 
-
 router = APIRouter()
+
 
 
 class DocumentCreateResponse(BaseModel):
@@ -27,17 +31,22 @@ async def upload_document(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
-    # Enforce tenant isolation: the tenant is derived from the JWT, not from a request field.
+    # Enforce tenant isolation: tenant is derived from the JWT, not from request fields.
+    tenant_id = current_user.tenant_id
+
+
+
     if settings.skip_db:
         # In skip_db mode we still require a JWT so UI cannot upload into arbitrary tenants.
+        # No persistence occurs, so we just run extraction and return fields.
         pass
+
 
     if not filename:
         raise HTTPException(status_code=400, detail="filename required")
 
-    tenant_id = current_user.tenant_id
-
     content_type = file.content_type
+
     file_bytes = await file.read()
 
 

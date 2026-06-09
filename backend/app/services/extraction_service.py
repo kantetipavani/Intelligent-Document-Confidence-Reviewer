@@ -367,10 +367,7 @@ async def run_extraction_and_prepare_review_version(
         run.error = None
         await run.save()
 
-        # Create immutable version 1..N
-        existing = await ReviewVersion.find({"tenant_id": tenant_id, "document_id": document_id}).to_list()
-        next_version = 1 if not existing else max(v.version_number for v in existing) + 1
-
+        # Create immutable version 1..N via version_service (single source of truth)
         version = await create_review_version(
             tenant_id=tenant_id,
             document_id=document_id,
@@ -379,6 +376,9 @@ async def run_extraction_and_prepare_review_version(
             action="ai_pass",
             reviewer_user_id=None,
         )
+
+        next_version = version.version_number
+
 
         try:
             from app.api.activity import record_event

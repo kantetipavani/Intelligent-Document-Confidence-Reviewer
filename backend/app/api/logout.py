@@ -1,35 +1,30 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends
+
 
 from app.api.activity import record_event
-from app.models.user import User, normalize_email
+from app.core.security import get_current_user
+from app.models.user import User
 
 router = APIRouter()
 
 
-class LogoutPayload(BaseModel):
-    email: str | None = None
-
-
 @router.post("/logout")
-async def logout(payload: LogoutPayload | None = None) -> dict:
-    # Scaffold logout: frontend clears localStorage.
-    # Record event is best-effort (no auth middleware in scaffold).
-    email = normalize_email(payload.email) if payload and payload.email else None
-    user = await User.find_one(User.email == email) if email else None
-
+async def logout(current_user: User = Depends(get_current_user)) -> dict:
+    # Authenticated logout: ensures event is tenant-scoped to the caller.
     try:
         await record_event(
             event_type="logout",
-            user_email=email,
-            tenant_id=getattr(user, "tenant_id", None) if user else None,
-            payload={"email": email} if email else {},
+            user_email=current_user.email,
+            tenant_id=current_user.tenant_id,
+            payload={"email": current_user.email},
         )
     except Exception:
         pass
 
+    # Frontend still clears localStorage/token.
     return {"status": "ok"}
+
 
 

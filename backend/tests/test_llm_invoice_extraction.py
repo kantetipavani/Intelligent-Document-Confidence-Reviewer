@@ -6,6 +6,7 @@ import types
 import pytest
 from fastapi.testclient import TestClient
 
+from app.core import security as security_module
 from app.core.config import settings
 from app.services.llm_service import ExtractionResult, parse_extraction_json
 
@@ -44,7 +45,9 @@ def test_parse_extraction_json_clamps_confidence_and_fills_missing_fields() -> N
 
 
 @pytest.mark.asyncio
-async def test_extract_invoice_fields_uses_mocked_anthropic_response(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_extract_invoice_fields_uses_mocked_anthropic_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class FakeMessages:
         async def create(self, **kwargs):
             assert kwargs["system"]
@@ -91,11 +94,52 @@ def test_upload_endpoint_returns_structured_json(monkeypatch: pytest.MonkeyPatch
 
     from app.main import app
 
+    class DummyUser:
+        email = "test@example.com"
+        tenant_id = "default"
+        role = "user"
+
+    # Instead of patching dependency (which FastAPI may capture), generate a valid JWT
+    # and patch DB lookup to return our DummyUser when the token is validated.
+    from app.core.security import create_access_token
+
+    from app.models import user as user_module
+
+    dummy_user_obj = DummyUser()
+
+    # Patch the attribute used in the query builder so User.email doesn't
+    # trigger Pydantic model attribute errors during tests.
+    monkeypatch.setattr(user_module.User, "email", "test@example.com", raising=False)
+
+    # Patch DB lookup used by get_current_user.
+    async def fake_find_one(*args, **kwargs):
+        return dummy_user_obj
+
+    monkeypatch.setattr(user_module.User, "find_one", fake_find_one)
+
+
+
+    token = create_access_token(
+        subject=DummyUser.email,
+        tenant_id=DummyUser.tenant_id,
+        role=DummyUser.role,
+    )
+
+    headers = {"Authorization": f"Bearer {token}"}
+
+
     with TestClient(app) as client:
         response = client.post(
             "/documents/upload",
-            data={"tenant_id": "default", "filename": "invoice.pdf"},
-            files={"file": ("invoice.pdf", b"%PDF mocked bytes", "application/pdf")},
+            data={"filename": "invoice.pdf"},
+            files={
+                "file": (
+                    "invoice.pdf",
+                    b"%PDF mocked bytes",
+                    "application/pdf",
+                )
+            },
+            headers=headers,
         )
 
     assert response.status_code == 200
@@ -104,3 +148,4 @@ def test_upload_endpoint_returns_structured_json(monkeypatch: pytest.MonkeyPatch
     assert body["extraction"]["invoice_number"]["value"] == "INV-1001"
     assert body["extraction"]["vendor_name"]["confidence"] == 0.91
     assert body["extraction"]["invoice_total"]["value"] == "INR 12,500.00"
+
