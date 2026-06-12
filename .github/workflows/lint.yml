@@ -30,17 +30,20 @@ jobs:
           pip install ruff
           ruff check .
 
+
       - name: Black (check)
         working-directory: backend
         run: |
           pip install black
           black --check .
 
+
       - name: Mypy (type check)
         working-directory: backend
         run: |
           pip install mypy
           mypy app
+
 
   lint-frontend:
     name: Lint (Frontend - build sanity)
@@ -52,7 +55,7 @@ jobs:
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: npm
 
       - name: Install
