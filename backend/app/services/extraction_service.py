@@ -346,21 +346,42 @@ async def run_extraction_and_prepare_review_version(
     await run.save()
 
     try:
-        # Extract text from provided bytes for TXT/PDF/DOC/DOCX (best-effort).
+        # Extract text from provided bytes for TXT/PDF/DOC/DOCX.
+        # Use the more complete extractor (PDF text + OCR fallback) from llm_service.
         document_text = doc.source_text or ""
 
+        extracted_result: dict[str, Any] | None = None
         if file_bytes:
-            document_text = extract_text_best_effort(
-                file_bytes=file_bytes,
-                content_type=content_type or "",
-                filename=doc.filename,
-            )
+            try:
+                # This returns the same schema shape expected by the UI:
+                # {"fields": {<key>: {"value": ..., "confidence": ...}, ...}, ...}
+                from app.services.llm_service import extract_invoice_from_document_bytes
 
-        if not document_text.strip():
+                extracted = await extract_invoice_from_document_bytes(
+                    file_bytes=file_bytes,
+                    content_type=content_type,
+                    filename=doc.filename,
+                )
+                # Pydantic model -> plain dict
+                extracted_result = extracted.model_dump()
+                document_text = ""  # not used when extracted_result is available
+            except Exception:
+                # If robust extractor fails, fall back to best-effort text + regex heuristics.
+                extracted_result = None
+
+                document_text = extract_text_best_effort(
+                    file_bytes=file_bytes,
+                    content_type=content_type or "",
+                    filename=doc.filename,
+                )
+
+        if extracted_result is None and not document_text.strip():
             # Fall back to filename so the rest of the pipeline can continue.
             document_text = f"(no text extracted yet) {doc.filename}"
 
-        result = document_text_to_extraction_result(document_text)
+        # Prefer the robust extracted_result (from llm_service) when available;
+        # otherwise derive from heuristic text.
+        result = extracted_result if extracted_result is not None else document_text_to_extraction_result(document_text)
 
         run.result = result
         run.status = "completed"

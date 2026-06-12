@@ -1,0 +1,9 @@
+Auth connectivity fix implemented:
+- Frontend now uses NEXT_PUBLIC_API_URL for backend baseURL (fallback to http://127.0.0.1:8000).
+- Login page now calls GET /health before submitting /auth/login, to show a clear message if backend is unreachable.
+
+Manual test:
+1) Start backend: uvicorn app.main:app --reload --port 8000
+2) Set frontend env: NEXT_PUBLIC_API_URL=http://localhost:8000 (or docker service URL)
+3) Register new user, then login.
+

@@ -33,8 +33,15 @@ def test_reviews_approve_requires_rbac(
     monkeypatch: pytest.MonkeyPatch,
     client: TestClient,
 ):
-    # Mock get_current_user
+    # Mock auth dependency.
+    # NOTE: FastAPI resolves dependencies at import-time, and this test
+    # uses a pre-instantiated `TestClient(app)`. To ensure the override is
+    # applied to the dependency used by the route, patch the underlying
+    # `get_current_user` symbol imported into the reviews API module.
     monkeypatch.setattr(security_module, "get_current_user", lambda: DummyUser("u1", "t1", role="user"))
+    import app.api.reviews as reviews_module
+    monkeypatch.setattr(reviews_module, "get_current_user", lambda: DummyUser("u1", "t1", role="user"))
+
 
     # Mock document lookup
     from app.models.document import Document
@@ -44,11 +51,14 @@ def test_reviews_approve_requires_rbac(
 
     monkeypatch.setattr(Document, "get", lambda _id: DummyDoc())
 
-    # Attempt approve with role=user should fail with 403
+    # Attempt approve with role=user should fail with 403.
+    # Since we're mocking auth dependency, use a valid-looking token header
+    # so OAuth2PasswordBearer doesn't reject the request before our override.
     resp = client.post(
         "/reviews/approve",
-        headers=_auth_headers("dummy"),
+        headers=_auth_headers("valid"),
         json={"document_id": "doc1", "extraction": {}},
     )
     assert resp.status_code == 403
+
 

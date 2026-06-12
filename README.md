@@ -9,8 +9,15 @@
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178c6?style=for-the-badge&logo=typescript)](https://www.typescriptlang.org/)
   [![MongoDB](https://img.shields.io/badge/MongoDB-Latest-00ed64?style=for-the-badge&logo=mongodb)](https://www.mongodb.com/)
   [![Anthropic](https://img.shields.io/badge/Anthropic%20Claude-API-000000?style=for-the-badge)](https://www.anthropic.com/)
-  
+
+  [![Lint](https://img.shields.io/github/actions/workflow/status/%7B%7D/??/lint.yml?style=for-the-badge&label=Lint)]()
+  [![Build](https://img.shields.io/github/actions/workflow/status/%7B%7D/??/build-check.yml?style=for-the-badge&label=Build)]()
+  [![Security](https://img.shields.io/github/actions/workflow/status/%7B%7D/??/security.yml?style=for-the-badge&label=Security)]()
+  [![Dependencies](https://img.shields.io/github/actions/workflow/status/%7B%7D/??/dependency-check.yml?style=for-the-badge&label=Deps)]()
+  [![Tests](https://img.shields.io/github/actions/workflow/status/%7B%7D/??/tests.yml?style=for-the-badge&label=Tests)]()
+
   <br/>
+
   
   **[🎯 Features](#-features) • [⚡ Quick Start](#-quick-start) • [📚 Documentation](./docs/README.md) • [🤝 Contributing](#-contributing) • [📞 Support](#-support)**
   

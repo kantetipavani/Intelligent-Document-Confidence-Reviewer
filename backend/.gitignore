@@ -15,5 +15,9 @@ htmlcov/
 
 # Node (if used)
 node_modules/
-.next/
+
+# Frontend artifacts (if any)
+frontend/.next/
+frontend/node_modules/
+
 

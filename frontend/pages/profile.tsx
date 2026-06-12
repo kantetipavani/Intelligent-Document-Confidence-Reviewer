@@ -217,7 +217,7 @@ export default function Profile() {
     </Link>
 
           <div className="profile-circle">
-            👤
+            U
           </div>
 
           <h1>
@@ -354,193 +354,170 @@ export default function Profile() {
       <style jsx>{`
 
         .page {
-          min-height: 100vh;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          background:
-            radial-gradient(
-              circle at top,
-              #e0e7ff,
-              #f8fafc
-            );
-        }
-            .arrow-btn {
-
-  position: absolute;
-
-  top: 20px;
-
-  left: 20px;
-
-  width: 45px;
-
-  height: 45px;
-
-  border: none;
-
-  border-radius: 50%;
-
-  background: #f1f5f9;
-
-  color: #0f172a;
-
-  font-size: 24px;
-
-  font-weight: 700;
-
-  cursor: pointer;
-
+  min-height: 100vh;
   display: flex;
-
-  align-items: center;
-
   justify-content: center;
+  align-items: center;
+  background: #f5f5f5;
+}
 
-  transition: all 0.3s ease;
-
+.arrow-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 45px;
+  height: 45px;
+  border: 1px solid #000;
+  border-radius: 50%;
+  background: #fff;
+  color: #000;
+  font-size: 24px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .arrow-btn:hover {
-
-  background: #e2e8f0;
-
-  transform: translateX(-3px);
-
+  background: #000;
+  color: #fff;
 }
 
-        .profile-card {
-          position:relative;
-          width: 500px;
-          padding: 40px;
-          border-radius: 24px;
-          background: white;
-          box-shadow:
-            0 20px 60px rgba(0,0,0,0.08);
-        }
+.profile-card {
+  position: relative;
+  width: 500px;
+  padding: 40px;
+  border-radius: 24px;
+  background: #fff;
+  border: 2px solid #000;
+  box-shadow: none;
+}
 
-        .profile-header {
-          text-align: center;
-          margin-bottom: 30px;
-        }
+.profile-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
 
-        .profile-circle {
-          width: 80px;
-          height: 80px;
-          margin: 0 auto 15px;
-          border-radius: 20px;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          font-size: 34px;
-          color: white;
-          background:
-            linear-gradient(
-              135deg,
-              #4f46e5,
-              #06b6d4
-            );
-        }
+.profile-header h1 {
+  color: #000;
+}
 
-        .profile-info {
-          display: flex;
-          flex-direction: column;
-          gap: 15px;
-        }
+.profile-header p {
+  color: #555;
+}
 
-        .info-box {
-          background: #f8fafc;
-          padding: 16px;
-          border-radius: 14px;
-          border: 1px solid #e2e8f0;
-        }
+.profile-circle {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 15px;
+  border-radius: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 34px;
+  background: #000;
+  color: #fff;
+}
 
-        .info-box label {
-          color: #64748b;
-          font-size: 13px;
-        }
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
 
-        .info-box p {
-          margin-top: 8px;
-          font-weight: 700;
-        }
+.info-box {
+  background: #fff;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid #000;
+}
 
-        .change-btn,
-        .save-btn,
-        .back-btn {
-          width: 100%;
-          margin-top: 18px;
-          padding: 14px;
-          border: none;
-          border-radius: 14px;
-          cursor: pointer;
-          color: white;
-          font-weight: 700;
-        }
+.info-box label {
+  color: #555;
+  font-size: 13px;
+}
 
-        .change-btn {
-          background:
-            linear-gradient(
-              135deg,
-              #22c55e,
-              #16a34a
-            );
-        }
+.info-box p {
+  margin-top: 8px;
+  font-weight: 700;
+  color: #000;
+}
 
-        .save-btn {
-          background:
-            linear-gradient(
-              135deg,
-              #4f46e5,
-              #06b6d4
-            );
-        }
+.change-btn,
+.save-btn,
+.back-btn {
+  width: 100%;
+  margin-top: 18px;
+  padding: 14px;
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  background: #000;
+  color: #fff;
+  font-weight: 700;
+  transition: 0.3s;
+}
 
-        .back-btn {
-          background:
-            linear-gradient(
-              135deg,
-              #2563eb,
-              #3b82f6
-            );
-        }
+.change-btn:hover,
+.save-btn:hover,
+.back-btn:hover {
+  background: #222;
+}
 
-        .password-box {
-          margin-top: 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-          padding: 20px;
-          border-radius: 16px;
-          background: #f8fafc;
-        }
+.password-box {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #000;
+}
 
-        .password-box input {
-          padding: 14px;
-          border-radius: 12px;
-          border: 1px solid #dbe2ea;
-          outline: none;
-        }
+.password-box h3 {
+  color: #000;
+}
 
-        .popup {
-          position: fixed;
-          top: 20px;
-          right: 20px;
-          padding: 15px 25px;
-          color: white;
-          border-radius: 12px;
-          font-weight: 600;
-          z-index: 999;
-        }
+.password-box input {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid #000;
+  outline: none;
+  background: #fff;
+  color: #000;
+}
 
-        .success {
-          background: #16a34a;
-        }
+.password-box input:focus {
+  border-color: #000;
+}
 
-        .error {
-          background: #dc2626;
-        }
+.popup {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  padding: 15px 25px;
+  color: #fff;
+  border-radius: 12px;
+  font-weight: 600;
+  z-index: 999;
+}
 
+.success {
+  background: #000;
+}
+
+.error {
+  background: #000;
+}
+
+@media (max-width: 600px) {
+  .profile-card {
+    width: 95%;
+    padding: 25px;
+  }
+}
       `}</style>
 
     </div>

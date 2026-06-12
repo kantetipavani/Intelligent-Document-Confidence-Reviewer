@@ -22,7 +22,8 @@ router = APIRouter()
 class DocumentCreateResponse(BaseModel):
     document_id: str | None = None
     status: str
-    extraction: ExtractionResult
+    extraction: ExtractionResult | None = None
+
 
 
 @router.post("/upload", response_model=DocumentCreateResponse)
@@ -52,17 +53,18 @@ async def upload_document(
 
 
 
-    try:
-        extraction = await extract_invoice_from_document_bytes(
-
-            file_bytes=file_bytes,
-            content_type=content_type,
-            filename=filename,
-        )
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"invoice extraction failed: {exc}") from exc
-
+    # Persist document immediately.
     if settings.skip_db:
+        # No persistence in skip_db mode; keep old behavior for local dev.
+        try:
+            extraction = await extract_invoice_from_document_bytes(
+                file_bytes=file_bytes,
+                content_type=content_type,
+                filename=filename,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"invoice extraction failed: {exc}") from exc
+
         return DocumentCreateResponse(
             document_id=None,
             status="extracted",
@@ -72,12 +74,9 @@ async def upload_document(
     doc = Document(tenant_id=tenant_id, filename=filename, content_type=content_type, source_text=None)
     await doc.insert()
 
-    # Kick off extraction job synchronously for now so frontend can immediately render fields.
-    # (Production approach: background task + polling)
+    # Create an extraction run placeholder.
     from app.models.extraction_run import ExtractionRun
-    from app.services.extraction_service import run_extraction_and_prepare_review_version
 
-    # Create a real extraction run id so Beanie/ObjectId validation passes.
     run = ExtractionRun(
         tenant_id=tenant_id,
         document_id=str(doc.id),
@@ -85,7 +84,18 @@ async def upload_document(
     )
     await run.insert()
 
-    # Audit: document uploaded / extraction triggered
+    # Publish job to in-process asyncio queue.
+    from app.queue.extraction_queue import ExtractionJob, publish_extraction_job
+
+    job = ExtractionJob(
+        tenant_id=tenant_id,
+        document_id=str(doc.id),
+        file_bytes=file_bytes,
+        filename=filename,
+    )
+    await publish_extraction_job(job)
+
+    # Audit: document uploaded / extraction enqueued
     try:
         from app.api.activity import record_event
 
@@ -96,28 +106,19 @@ async def upload_document(
             payload={
                 "document_id": str(doc.id),
                 "filename": filename,
-                "extraction": extraction.model_dump(),
             },
         )
     except Exception:
         pass
 
-    await run_extraction_and_prepare_review_version(
-        tenant_id=tenant_id,
-        document_id=str(doc.id),
-        extraction_run_id=str(run.id),
-        file_bytes=file_bytes,
-        content_type=content_type,
-        user_email=current_user.email,
-    )
-
-
-
     return DocumentCreateResponse(
         document_id=str(doc.id),
-        status="extracted",
-        extraction=extraction,
+        status="processing",
+        extraction=None,
     )
+
+
+
 
 
 

@@ -1,0 +1,354 @@
+{
+  "info": {
+    "name": "INDCR API Collection",
+    "description": "Collection for authentication, document processing, review approval, and audit log.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth - Register",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/register",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "register"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\",\n  \"tenant_id\": \"{{tenant_id}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Auth - Login",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/login",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "login"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{test_email}}\",\n  \"password\": \"{{test_password}}\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json && json.access_token) {",
+              "  pm.collectionVariables.set('token', json.access_token);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth - /me",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/me",
+          "host": ["{{base_url}}"],
+          "path": ["me"]
+        }
+      }
+    },
+    {
+      "name": "Document - Upload (Multipart)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/documents/upload",
+          "host": ["{{base_url}}"],
+          "path": ["documents", "upload"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "tenant_id",
+              "value": "{{tenant_id}}",
+              "type": "text"
+            },
+            {
+              "key": "filename",
+              "value": "sample_invoice.pdf",
+              "type": "text"
+            },
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{file_path}}",
+              "disabled": true
+            },
+            {
+              "key": "user_email",
+              "value": "{{test_email}}",
+              "type": "text"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const json = pm.response.json();",
+              "if (json && json.document_id) { pm.collectionVariables.set('document_id', json.document_id); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents - Status by ID",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/documents/{{document_id}}/status",
+          "host": ["{{base_url}}"],
+          "path": ["documents", "{{document_id}}", "status"]
+        }
+      }
+    },
+    {
+      "name": "Versions - Get Versions by Document",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/versions/{{document_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["versions", "{{document_id}}"]
+        }
+      }
+    },
+    {
+      "name": "Reviews - Approve",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/reviews/approve",
+          "host": ["{{base_url}}"],
+          "path": ["reviews", "approve"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"document_id\": \"{{document_id}}\",\n  \"extraction\": {\n    \"invoice_number\": { \"value\": \"INV-001\", \"confidence\": 0.9 },\n    \"vendor_name\": { \"value\": \"Acme\", \"confidence\": 0.8 }\n  }\n}"
+        }
+      }
+    },
+    {
+      "name": "Activity - GET /activity",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/activity",
+          "host": ["{{base_url}}"],
+          "path": ["activity"]
+        }
+      }
+    },
+    {
+      "name": "Negative - Upload without token (401)",
+      "request": {
+        "method": "POST",
+        "url": {
+          "raw": "{{base_url}}/documents/upload",
+          "host": ["{{base_url}}"],
+          "path": ["documents", "upload"]
+        },
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "tenant_id",
+              "value": "{{tenant_id}}",
+              "type": "text"
+            },
+            {
+              "key": "filename",
+              "value": "sample_invoice.pdf",
+              "type": "text"
+            },
+            {
+              "key": "file",
+              "type": "file",
+              "src": "{{file_path}}",
+              "disabled": true
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Negative - Cross-tenant versions fetch",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/versions/{{document_id_cross_tenant}}",
+          "host": ["{{base_url}}"],
+          "path": ["versions", "{{document_id_cross_tenant}}"]
+        }
+      }
+    },
+    {
+      "name": "Negative - Invalid document ID (404) - Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/documents/{{invalid_document_id}}/status",
+          "host": ["{{base_url}}"],
+          "path": ["documents", "{{invalid_document_id}}", "status"]
+        }
+      }
+    },
+    {
+      "name": "Negative - Invalid document ID (404) - Versions",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/versions/{{invalid_document_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["versions", "{{invalid_document_id}}"]
+        }
+      }
+    },
+    {
+      "name": "Negative - Activity without token (401)",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{base_url}}/activity",
+          "host": ["{{base_url}}"],
+          "path": ["activity"]
+        }
+      }
+    },
+    {
+      "name": "Auth - Register (different user)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/auth/register",
+          "host": ["{{base_url}}"],
+          "path": ["auth", "register"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"{{test_email_alt}}\",\n  \"password\": \"{{test_password}}\",\n  \"tenant_id\": \"{{tenant_id}}\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Reviews - Approve (invalid doc) (404)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Authorization",
+            "value": "Bearer {{token}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{base_url}}/reviews/approve",
+          "host": ["{{base_url}}"],
+          "path": ["reviews", "approve"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"document_id\": \"{{invalid_document_id}}\",\n  \"extraction\": {}\n}"
+        }
+      }
+    }
+  ]
+}
+

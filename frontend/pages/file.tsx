@@ -1,95 +1,263 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+import api from "../services/api";
 
 export default function InvoicePage() {
+  const [selectedFile, setSelectedFile] = useState<any>(null);
+  const [fields, setFields] = useState<any[]>([]);
+  const [isExtracted, setIsExtracted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [documentId, setDocumentId] = useState<string | null>(null);
 
-  const [selectedFile, setSelectedFile] =
-    useState(null);
 
-  const [fields, setFields] =
-    useState([]);
-
-  const [isExtracted, setIsExtracted] =
-    useState(false);
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const handleFileUpload = (e) => {
-
+  const handleFileUpload = (e: any) => {
     if (e.target.files?.[0]) {
-
-      setSelectedFile(
-        e.target.files[0]
-      );
-
+      setSelectedFile(e.target.files[0]);
       setIsExtracted(false);
-
     }
-
   };
 
   const handleExtract = async () => {
 
+    setDocumentId(null);
+
+
     if (!selectedFile) {
-
-      alert(
-        "Please upload invoice file"
-      );
-
+      alert("Please upload invoice file");
       return;
-
     }
 
-    setLoading(true);
+    try {
+      setLoading(true);
 
-    setTimeout(() => {
+      const formData = new FormData();
 
-      setFields([
+      // tenant_id is required by backend auth logic; derived from JWT server-side.
+      formData.append("tenant_id", "default");
+      formData.append("filename", selectedFile.name);
+      formData.append("file", selectedFile);
 
-        {
-          name: "INVOICE_NO",
-          value: "INV-2026-001",
-          confidence: 98,
+      const response = await api.post("/documents/upload", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
         },
+      });
 
-        {
-          name: "DATE",
-          value: "26-May-2026",
-          confidence: 95,
-        },
+      const extraction = response.data?.extraction ?? {};
 
-        {
-          name: "GSTIN",
-          value: "27AAAPL1234C1ZV",
-          confidence: 92,
-        },
+      // Backend extraction returns top-level invoice_number/vendor_name/invoice_total
+      // and also may include `fields` map.
+      const normalizedExtraction = (() => {
+        if (extraction?.fields && typeof extraction.fields === "object") {
+          return { ...extraction.fields, ...extraction };
+        }
+        return extraction;
+      })();
 
-        {
-          name: "VENDOR",
-          value: "Acme Supplies Pvt. Ltd.",
-          confidence: 96,
-        },
+      const aliasGroups = [
+        ["invoice_number", "invoice_no"],
+        ["vendor_name", "vendor"],
+        ["invoice_total", "amount"],
+      ];
 
-        {
-          name: "AMOUNT",
-          value: "$12,500",
-          confidence: 94,
-        },
+      const orderedKeys = [
+        "invoice_number",
+        "vendor_name",
+        "invoice_total",
+        "date",
+        "gstin",
+        "status",
+      ];
 
-        {
-          name: "STATUS",
-          value: "APPROVED",
-          confidence: 89,
-        },
-      ]);
+      const usedAliases = new Set<string>();
 
+      const extractionKeys = [
+        ...orderedKeys.filter((key) => {
+          if (!Object.prototype.hasOwnProperty.call(normalizedExtraction, key)) return false;
+          const aliasGroup = aliasGroups.find((group) => group.includes(key));
+          if (!aliasGroup) return true;
+          if (aliasGroup.some((alias) => usedAliases.has(alias))) return false;
+          aliasGroup.forEach((alias) => usedAliases.add(alias));
+          return true;
+        }),
+        ...Object.keys(normalizedExtraction).filter((key) => {
+          if (key === "fields") return false;
+          return !orderedKeys.includes(key) && !usedAliases.has(key);
+        }),
+      ];
+
+      const extractedFields = extractionKeys.map((key) => {
+        const f = (normalizedExtraction as any)?.[key];
+        return {
+          name: key.replace(/_/g, " ").toUpperCase(),
+          value: f?.value ?? "",
+          confidence: f?.confidence ?? 0,
+        };
+      });
+
+      // Backend now runs extraction in background.
+      setDocumentId(response.data?.document_id ?? null);
+
+      // If backend didn't return extraction yet, spinner will show via `loading` state.
+
+
+      // For backward compatibility: if backend already returned extraction, render it.
+      const maybeExtraction = response.data?.extraction;
+      if (maybeExtraction) {
+        const normalizedExtraction = (() => {
+          if (maybeExtraction?.fields && typeof maybeExtraction.fields === "object") {
+            return { ...maybeExtraction.fields, ...maybeExtraction };
+          }
+          return maybeExtraction;
+        })();
+
+        const aliasGroups = [
+          ["invoice_number", "invoice_no"],
+          ["vendor_name", "vendor"],
+          ["invoice_total", "amount"],
+        ];
+
+        const orderedKeys = [
+          "invoice_number",
+          "vendor_name",
+          "invoice_total",
+          "date",
+          "gstin",
+          "status",
+        ];
+
+        const usedAliases = new Set<string>();
+        const extractionKeys = [
+          ...orderedKeys.filter((key) => {
+            if (!Object.prototype.hasOwnProperty.call(normalizedExtraction, key)) return false;
+            const aliasGroup = aliasGroups.find((group) => group.includes(key));
+            if (!aliasGroup) return true;
+            if (aliasGroup.some((alias) => usedAliases.has(alias))) return false;
+            aliasGroup.forEach((alias) => usedAliases.add(alias));
+            return true;
+          }),
+          ...Object.keys(normalizedExtraction).filter((key) => {
+            if (key === "fields") return false;
+            return !orderedKeys.includes(key) && !usedAliases.has(key);
+          }),
+        ];
+
+        const extractedFields = extractionKeys.map((key) => {
+          const f = (normalizedExtraction as any)?.[key];
+          return {
+            name: key.replace(/_/g, " ").toUpperCase(),
+            value: f?.value ?? "",
+            confidence: f?.confidence ?? 0,
+          };
+        });
+
+        setFields(extractedFields);
+        setIsExtracted(true);
+      }
+    } catch (error) {
+
+      console.error(error);
+      alert("OCR Extraction Failed");
+    } finally {
       setLoading(false);
-
-    }, 2000);
-
+    }
   };
 
+  useEffect(() => {
+    if (!documentId) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get(`/documents/${documentId}/status`);
+        const { status: jobStatus, extraction } = response.data || {};
+
+        if (cancelled) return;
+
+        if (jobStatus === "ready" && extraction) {
+          const normalizedExtraction = (() => {
+            if (extraction?.fields && typeof extraction.fields === "object") {
+              return { ...extraction.fields, ...extraction };
+            }
+            return extraction;
+          })();
+
+          const aliasGroups = [
+            ["invoice_number", "invoice_no"],
+            ["vendor_name", "vendor"],
+            ["invoice_total", "amount"],
+          ];
+
+          const orderedKeys = [
+            "invoice_number",
+            "vendor_name",
+            "invoice_total",
+            "date",
+            "gstin",
+            "status",
+          ];
+
+          const usedAliases = new Set<string>();
+
+          const extractionKeys = [
+            ...orderedKeys.filter((key) => {
+              if (!Object.prototype.hasOwnProperty.call(normalizedExtraction, key)) return false;
+              const aliasGroup = aliasGroups.find((group) => group.includes(key));
+              if (!aliasGroup) return true;
+              if (aliasGroup.some((alias) => usedAliases.has(alias))) return false;
+              aliasGroup.forEach((alias) => usedAliases.add(alias));
+              return true;
+            }),
+            ...Object.keys(normalizedExtraction).filter((key) => {
+              if (key === "fields") return false;
+              return !orderedKeys.includes(key) && !usedAliases.has(key);
+            }),
+          ];
+
+          const extractedFields = extractionKeys.map((key) => {
+            const f = (normalizedExtraction as any)?.[key];
+            return {
+              name: key.replace(/_/g, " ").toUpperCase(),
+              value: f?.value ?? "",
+              confidence: f?.confidence ?? 0,
+            };
+          });
+
+          setFields(extractedFields);
+          setIsExtracted(true);
+          setLoading(false);
+          return;
+        }
+
+        if (jobStatus === "failed") {
+          setLoading(false);
+          alert("OCR Extraction Failed");
+          return;
+        }
+
+        setTimeout(poll, 2000);
+      } catch (err) {
+        if (cancelled) return;
+        setLoading(false);
+        console.error(err);
+        setTimeout(poll, 2000);
+      }
+    };
+
+    setIsExtracted(false);
+    setFields([]);
+    setTimeout(poll, 0);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId]);
+
   return (
+
+
 
     <div className="page-container">
 
@@ -103,11 +271,14 @@ export default function InvoicePage() {
 
         <div className="upload-box">
 
-          <input
-            type="file"
-            accept=".pdf,.doc,.docx,.txt"
-            onChange={handleFileUpload}
-          />
+          <label>
+            Upload file
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx,.txt"
+              onChange={handleFileUpload}
+            />
+          </label>
 
           {
             selectedFile && (
@@ -154,8 +325,15 @@ export default function InvoicePage() {
 
         </div>
 
-        {
-          isExtracted ? (
+        {loading && !isExtracted ? (
+          <div className="empty-state">
+            <div className="empty-icon">⏳</div>
+            <h3>Processing invoice...</h3>
+            <p>Please wait while we extract fields.</p>
+          </div>
+        ) : isExtracted ? (
+
+
 
             <div className="fields-grid">
 

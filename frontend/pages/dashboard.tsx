@@ -1,15 +1,19 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 
+import { useQuery } from "@tanstack/react-query";
+
 import Layout from "../components/layout";
-import ExtractedFields from "../components/ExtractedFields";
 import api from "../services/api";
+
+import ExtractedFields from "../components/ExtractedFields";
 
 
 export default function Dashboard() {
 
   const [activePage, setActivePage] =
     useState("dashboard");
+
 
   const [selectedFile, setSelectedFile] =
     useState(null);
@@ -104,79 +108,74 @@ export default function Dashboard() {
       const documentId = response.data.document_id;
       let extraction: any = response.data?.extraction;
 
-      // Newer backend responses include extraction directly. If an older response
-      // only returns document_id, fall back to polling the latest snapshot.
+      // Newer backend responses include extraction directly.
+      // If backend processing is async and extraction is not yet available,
+      // poll /versions/latest.
       const maxAttempts = 20;
       const delayMs = 500;
 
-      for (let attempt = 0; !extraction && documentId && attempt < maxAttempts; attempt++) {
-        const latest = await api.get(
-          `/versions/latest/${documentId}`
-        );
+      if (!extraction && documentId) {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+          try {
+            const latest = await api.get(
+              `/versions/latest/${documentId}`
+            );
 
-        extraction = latest.data?.extraction;
-        if (extraction) break;
+            // backend returns { extraction: <fields object>, ... }
+            extraction = latest.data?.extraction;
+            if (extraction) break;
+          } catch (e) {
+            // 404 "no extraction versions" is expected while async job is running.
+            // Keep polling until attempts finish.
+          }
 
-        await new Promise((r) => setTimeout(r, delayMs));
+          await new Promise((r) => setTimeout(r, delayMs));
+        }
       }
 
       if (!extraction) {
         throw new Error("Extraction result not available");
       }
 
-      const normalizedExtraction =
+      // extraction can be either:
+      // - { fields: {...} } (old)
+      // - { invoice_no: {...}, ... } (current versions/latest returns fields directly)
+      const fieldsObj =
         extraction?.fields &&
         typeof extraction.fields === "object"
-          ? {
-              ...extraction.fields,
-              ...extraction,
-            }
+          ? extraction.fields
           : extraction || {};
 
-      const aliasGroups = [
-        ["invoice_number", "invoice_no"],
-        ["vendor_name", "vendor"],
-        ["invoice_total", "amount"],
-      ];
-
-      const orderedKeys = [
-        "invoice_number",
-        "vendor_name",
-        "invoice_total",
+      // Canonical keys produced by the backend UI schema:
+      // invoice_no, date, gstin, vendor, amount, status
+      const canonicalOrder = [
+        "invoice_no",
+        "vendor",
+        "amount",
         "date",
         "gstin",
         "status",
       ];
 
-      const usedAliases = new Set<string>();
-      const extractionKeys = [
-        ...orderedKeys.filter((key) => {
-          if (!Object.prototype.hasOwnProperty.call(normalizedExtraction, key)) {
-            return false;
-          }
+      const legacyAliases: Record<string, string> = {
+        invoice_number: "invoice_no",
+        vendor_name: "vendor",
+        invoice_total: "amount",
+      };
 
-          const aliasGroup = aliasGroups.find((group) => group.includes(key));
-          if (!aliasGroup) {
-            return true;
-          }
+      const getField = (key: string) => {
+        const direct = (fieldsObj as any)?.[key];
+        if (direct) return direct;
 
-          if (aliasGroup.some((alias) => usedAliases.has(alias))) {
-            return false;
-          }
+        // legacy support (if backend or old snapshot uses older keys)
+        const mapped = legacyAliases[key];
+        if (mapped) return (fieldsObj as any)?.[mapped];
 
-          aliasGroup.forEach((alias) => usedAliases.add(alias));
-          return true;
-        }),
-        ...Object.keys(normalizedExtraction).filter(
-          (key) =>
-            key !== "fields" &&
-            !orderedKeys.includes(key) &&
-            !usedAliases.has(key),
-        ),
-      ];
+        return undefined;
+      };
 
-      const extractedFields = extractionKeys.map((key) => {
-        const f = normalizedExtraction?.[key];
+      const extractedFields = canonicalOrder.map((key) => {
+        const f = getField(key) as any;
         return {
           name: key.replace(/_/g, " ").toUpperCase(),
           value: f?.value ?? "",
@@ -188,13 +187,23 @@ export default function Dashboard() {
       setIsExtracted(true);
     } catch (error) {
 
-      console.error(error);
+      console.error("OCR Extraction Failed:", error);
+
+      const status = (error as any)?.response?.status;
+      const data = (error as any)?.response?.data;
+      const msg =
+        (data && (data.detail || data.message))
+          ? data.detail || data.message
+          : typeof data === "string"
+            ? data
+            : null;
 
       alert(
-        "OCR Extraction Failed"
+        `OCR Extraction Failed${status ? ` (HTTP ${status})` : ""}${msg ? `: ${msg}` : ""}`
       );
 
     } finally {
+
 
       setLoading(false);
 
@@ -239,43 +248,35 @@ export default function Dashboard() {
     );
   };
 
-  useEffect(() => {
-    if (activePage !== "info") return;
+  const activityQuery = useQuery({
+    queryKey: ["activity", userEmail, "by-email"],
+    enabled: activePage === "info" && !!userEmail,
+    queryFn: async () => {
+      const res = await api.get(
+        `/activity/by-email/${userEmail}`
+      );
+      return res.data || [];
+    },
+  });
 
-    const loadActivity = async () => {
-      try {
-        setActivityLoading(true);
-        setActivityError(null);
+  // Keep existing state variables to minimize JSX churn
+  // (until we fully decompose reviewer pane in later steps).
+  const activityData =
+    activityQuery.data || [];
 
-        const email =
-          localStorage.getItem("userEmail");
+  const activityErrorMsg =
+    (activityQuery.error as any)?.response?.data
+      ?.detail || activityQuery.error
+      ? String(
+          (activityQuery.error as any)?.response?.data?.detail ??
+            activityQuery.error
+        )
+      : null;
 
-        if (!email) {
-          setActivityError(
-            "No user email found. Please login."
-          );
-          setActivity([]);
-          return;
-        }
+  const activityLoadingState =
+    activityQuery.isLoading ||
+    activityQuery.isFetching;
 
-        const res =
-          await api.get(
-            `/activity/by-email/${email}`
-          );
-
-        setActivity(res.data || []);
-      } catch (e: any) {
-        setActivityError(
-          e?.response?.data?.detail ||
-            "Failed to load activity"
-        );
-      } finally {
-        setActivityLoading(false);
-      }
-    };
-
-    loadActivity();
-  }, [activePage]);
 
   return (
 
@@ -322,7 +323,7 @@ export default function Dashboard() {
                 setActivePage("dashboard")
               }
             >
-              📊 Dashboard
+               Dashboard
             </button>
 
             <button
@@ -335,7 +336,7 @@ export default function Dashboard() {
                 setActivePage("reviewer")
               }
             >
-              📄 Invoice Reviewer
+               Invoice Reviewer
             </button>
 
             <button
@@ -348,7 +349,7 @@ export default function Dashboard() {
                 setActivePage("info")
               }
             >
-              ℹ️ INFO
+               INFO
             </button>
           </nav>
 
@@ -379,9 +380,7 @@ export default function Dashboard() {
 
             <div className="topbar-right">
 
-              <div className="status-badge">
-                🟢 OCR Engine Active
-              </div>
+             
 
               {/* PROFILE */}
 
@@ -483,16 +482,15 @@ export default function Dashboard() {
               <div className="reviewer-page">
                 <div className="upload-card">
                   <h2>Account & Activity</h2>
-                  <p className="activity-subtitle">
-                    User: <b>{userEmail || "Unknown"}</b>
-                  </p>
-                  {activityLoading ? (
+                  
+                  {activityLoadingState ? (
                     <p>Loading activity...</p>
-                  ) : activityError ? (
-                    <p className="activity-error">{activityError}</p>
-                  ) : activity?.length ? (
+                  ) : activityErrorMsg ? (
+                    <p className="activity-error">{activityErrorMsg}</p>
+                  ) : activityData?.length ? (
                     <div className="activity-list">
-                      {activity.map((ev, idx) => (
+                      {activityData.map((ev, idx) => (
+
                         <div
                           key={idx}
                           className={
@@ -526,7 +524,7 @@ export default function Dashboard() {
                 <div className="review-panel">
                   <div className="review-header">
                     <h2>Extracted Fields</h2>
-                    <span className="review-tag">From retrieval events</span>
+                    
                   </div>
                   <div className="extraction-panel">
                     {selectedActivityIndex !== null ? (
@@ -581,24 +579,14 @@ export default function Dashboard() {
                   </h2>
 
                   <div className="upload-box">
-
+                       <b>
                     <input
                       type="file"
                       accept=".pdf,.doc,.docx,.txt"
                       onChange={handleFileUpload}
                     />
-
-                    {
-                      selectedFile && (
-
-                        <div className="file-preview">
-
-                          📄 {selectedFile.name}
-
-                        </div>
-
-                      )
-                    }
+                     </b>
+                    
 
                   </div>
 
@@ -625,11 +613,10 @@ export default function Dashboard() {
 
                     <h2>
                       Extracted Invoice Fields
+                      
                     </h2>
 
-                    <span className="review-tag">
-                      AI Generated
-                    </span>
+                    
 
                   </div>
 
@@ -653,7 +640,7 @@ export default function Dashboard() {
                                 <div className="field-top">
 
                                   <h4>
-                                    {field.name}
+                                    <b> {field.name} </b>
                                   </h4>
 
                                   <span
@@ -753,57 +740,50 @@ export default function Dashboard() {
         }
 
         .dashboard-wrapper {
-          display: flex;
-          min-height: 100vh;
-          background:
-            linear-gradient(
-              135deg,
-              #eef2ff,
-              #f8fafc
-            );
-        }
+  display: flex;
+  min-height: 100vh;
+  background: #f5f5f5;
+}
 
         /* SIDEBAR */
 
         .sidebar {
-          width: 300px;
-          background:
-            rgb(1, 2, 12);
-
-          padding: 28px;
-
-          display: flex;
-          flex-direction: column;
-          gap: 28px;
-        }
+  width: 300px;
+  background: #000;
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #222;
+  box-shadow: none;
+}
 
         .logo-section {
           display: flex;
           align-items: center;
-          gap: 16px;
+          gap: 10px;
         }
 
-        .logo-circle {
-          width: 58px;
-          height: 58px;
+       .logo-circle {
+  width: 64px;
+  height: 64px;
 
-          border-radius: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 
-          background:
-            linear-gradient(
-              135deg,
-              #6366f1,
-              #8b5cf6
-            );
+  border-radius: 50%;
 
-          display: flex;
-          align-items: center;
-          justify-content: center;
+  background: #fff;
+  color: #000;
 
-          color: white;
-          font-weight: 800;
-          font-size: 20px;
-        }
+  font-weight: 800;
+  font-size: 24px;
+
+  box-shadow: none;
+  margin-bottom: 20px;
+  
+}
+
 
         .logo-section h2 {
           
@@ -826,46 +806,33 @@ export default function Dashboard() {
           gap: 14px;
         }
 
-        .nav-btn {
-          border: none;
-          padding: 16px;
-          border-radius: 14px;
-          cursor: pointer;
-          font-weight: 600;
-          text-align: left;
-          background: white;
-          color: #334155;
-          transition: 0.3s ease;
-        }
+       .nav-btn {
+  border: 1px solid #ddd;
+  padding: 14px;
+  border-radius: 10px;
+  background: #000;
+  color: #fff;
+  font-weight: 700;
+  transition: all .3s ease;
+  box-shadow: none;
+}
 
-        .nav-btn.active {
-          background:
-            linear-gradient(
-              135deg,
-             #6c92e6,
-              #8b5cf6
-            );
+.nav-btn.active {
+  background: #fff;
+  color: #000;
+  border: 1px solid #555;
+  box-shadow: none;
+}
 
-          color: white;
-        }
 
         /* MAIN */
 
         .main-content {
-          flex: 1;
-          padding: 32px;
-
-         background:
-            linear-gradient(
-              135deg,
-              #2058d0,
-               #6c92e6,
-              #aca0f7
-            );
-          
-    
-          
-          }
+  flex: 1;
+  padding: 32px;
+  min-height: 100vh;
+  background: #f8f8f8;
+}
 
 
         /* TOPBAR */
@@ -878,21 +845,17 @@ export default function Dashboard() {
         }
 
         .topbar h1 {
-          margin: 0;
-          color: #000000;
-          width:100%;
-        }
+  color: #000;
+  font-size: 38px;
+  font-weight: 700;
+}
 
-        .topbar p {
-          display: flex;
-          align-items: center;
-          justify-content: top;
-
-          color: white;
-          font-weight: 500;
-          font-size: 20px;
-        }
-
+.topbar p {
+  color: #130808;
+  font-size: 20px;
+  font-weight: 500;
+  margin-top: 6px;
+}
         .topbar-right {
           display: flex;
           align-items: center;
@@ -900,12 +863,15 @@ export default function Dashboard() {
         }
 
         .status-badge {
-          background: white;
-          padding: 12px 18px;
-          border-radius: 999px;
-          color: #059669;
-          font-weight: 600;
-        }
+  background: #fff;
+  border: 1px solid #ddd;
+  padding: 14px 24px;
+  border-radius: 12px;
+  color: #000;
+  font-weight: 700;
+  box-shadow: none;
+}
+ 
 
         /* PROFILE */
 
@@ -914,11 +880,20 @@ export default function Dashboard() {
         }
 
         .profile-trigger {
-          background: white;
-          padding: 10px 16px;
-          border-radius: 14px;
-          cursor: pointer;
-        }
+  background: #fff;
+  border: 1px solid #ddd;
+
+  width: 56px;
+  height: 56px;
+
+  border-radius: 12px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  box-shadow: none;
+}
 
         .profile-icon {
           font-size: 20px;
@@ -970,26 +945,28 @@ export default function Dashboard() {
         }
 
         .stat-card {
-          padding: 26px;
-          border-radius: 22px;
-        }
+  background: #fff;
+  border: 1px solid #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: none;
+  transition: all .3s ease;
+}
 
-        .stat-card h3 {
-          margin: 0;
-          font-size: 36px;
-        }
-
-        .blue {
-          background: white;
-        }
-
-        .purple {
-          background: white;
-        }
-
-        .orange {
-          background: white;
-        }
+.stat-card h3 {
+  font-size: 54px;
+  font-weight: 700;
+  margin-bottom: 10px;
+  color: #fff;
+}
+  .stat-card  p{
+  color: #fff;
+  }
+        .blue,
+.purple,
+.orange {
+  background: rgba(11, 1, 1, 0.95);
+}
 
         /* REVIEWER */
 
@@ -997,60 +974,50 @@ export default function Dashboard() {
           display: grid;
           grid-template-columns:
             350px 1fr;
-
+            
           gap: 24px;
         }
 
         .upload-card,
-        .review-panel {
-          background: white;
-          border-radius: 24px;
-          padding: 28px;
-          box-shadow:
-            0 10px 24px rgba(0,0,0,0.05);
-        }
-
+.review-panel {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 30px;
+  box-shadow: none;
+}
+  
         .upload-box {
-          margin-top: 24px;
-          padding: 34px;
-          border:
-            2px dashed #c7d2fe;
+  margin-top: 24px;
+  padding: 40px;
+  border: 2px dashed #999;
+  border-radius: 12px;
+  text-align: center;
+  background: #fafafa;
+}
 
-          border-radius: 18px;
-          text-align: center;
-          background: #f8fafc;
-        }
+.extract-btn {
+  width: 100%;
+  margin-top: 24px;
+  border: none;
+  padding: 18px;
+  border-radius: 10px;
 
-        .extract-btn {
-          width: 100%;
-          margin-top: 24px;
-          border: none;
-          padding: 16px;
-          border-radius: 14px;
-          background:
-            linear-gradient(
-              135deg,
-              #6366f1,
-              #8b5cf6
-            );
+  background: #000;
+  color: #fff;
 
-          color: white;
-          font-weight: 700;
-          cursor: pointer;
-        }
+  font-size: 16px;
+  font-weight: 700;
 
-        .review-header {
-          display: flex;
-          justify-content: space-between;
-          margin-bottom: 24px;
-        }
+  cursor: pointer;
 
-        .review-tag {
-          background: #dbeafe;
-          color: #2563eb;
-          padding: 10px 16px;
-          border-radius: 999px;
-        }
+  box-shadow: none;
+}
+
+.extract-btn:hover {
+  background: #222;
+  transform: none;
+}
 
         /* FIELDS */
 
@@ -1063,12 +1030,20 @@ export default function Dashboard() {
         }
 
         .field-card {
-          border:
-            1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  padding: 22px;
+  box-shadow: none;
+}
 
-          border-radius: 18px;
-          padding: 20px;
-        }
+.field-card:hover {
+
+  transform: translateY(-3px);
+
+  box-shadow:
+    0 15px 30px rgba(0,0,0,.08);
+}
 
         .field-top {
           display: flex;
@@ -1084,19 +1059,19 @@ export default function Dashboard() {
         }
 
         .high {
-          background: #dcfce7;
-          color: #15803d;
-        }
+  background: #111;
+  color: #fff;
+}
 
-        .medium {
-          background: #fef9c3;
-          color: #ca8a04;
-        }
+.medium {
+  background: #555;
+  color: #fff;
+}
 
-        .low {
-          background: #fee2e2;
-          color: #dc2626;
-        }
+.low {
+  background: #999;
+  color: #fff;
+}
 
         /* EMPTY */
 
@@ -1138,16 +1113,14 @@ export default function Dashboard() {
         }
 
         .activity-item:hover {
-          cursor: pointer;
-          transform: translateY(-1px);
-          border-color: #c7d2fe;
-          background: #f8fbff;
-        }
+  border-color: #000;
+  background: #f5f5f5;
+}
 
         .activity-item.selected {
-          border-color: #6366f1;
-          background: #eef2ff;
-        }
+  border-color: #000;
+  background: #f0f0f0;
+}
 
         .activity-head {
           display: flex;

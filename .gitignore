@@ -1,12 +1,29 @@
+.gitignore
+# Backend
 backend/**/__pycache__/
 backend/**/*.pyc
 backend/.env
 backend/.venv
-backend/.env
-backend/.venv
 backend/.pytest_cache/
+
+# Frontend
 frontend/.next/
 frontend/node_modules/
 
+# Misc
+.DS_Store
+.env
 
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Coverage
+.coverage
+htmlcov/
+
+# Tests
+.pytest_cache/
 
