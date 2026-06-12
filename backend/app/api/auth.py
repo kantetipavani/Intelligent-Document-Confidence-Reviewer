@@ -126,7 +126,13 @@ async def login(payload: LoginPayload) -> AuthResponse:
     if not user:
         # Case-insensitive fallback for casing mismatches.
         email_regex = f"^{re.escape(email)}$"
-        user = await User.find_one(User.email.regex(email_regex, "i"))
+        # Beanie document field filtering supports regex operations at runtime.
+        # mypy can't infer the method on the underlying model field type.
+        email_regex_filter = User.email  # keep runtime behavior; help mypy
+        user = await User.find_one(email_regex_filter.regex(email_regex, "i"))  # type: ignore[attr-defined]
+
+
+
 
 
     if not user:

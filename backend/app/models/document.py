@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from beanie import Document
+from beanie import Document as BeanieDocument
 from pydantic import Field
 from typing import Optional
 from datetime import datetime
 
 
-class Document(Document):
+
+class Document(BeanieDocument):
+
     tenant_id: str = Field(min_length=1)
     filename: str = Field(min_length=1, max_length=500)
     content_type: Optional[str] = Field(default=None, max_length=200)
