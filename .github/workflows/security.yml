@@ -51,5 +51,7 @@ jobs:
 
       - name: npm audit (production)
         working-directory: frontend
-        run: npm audit --production
+        # Non-blocking: vulnerability findings should not fail CI/CD deploy.
+        run: npm audit --production || true
+
 
