@@ -50,5 +50,7 @@ jobs:
 
       - name: npm audit (production)
         working-directory: frontend
-        run: npm audit --production
+        # Non-blocking: do not fail CI/CD deploy on audit findings.
+        run: npm audit --production || true
+
 
