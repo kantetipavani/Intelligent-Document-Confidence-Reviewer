@@ -3,16 +3,32 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Any, Callable
 
-from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi import Depends, Header, HTTPException, status
+
+
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+
 
 from app.core.config import settings
 from app.models.user import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+
+
+def _extract_bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+
+        return None
+    # Expected: "Bearer <token>"
+    parts = authorization.split(" ", 1)
+    if len(parts) != 2:
+        return None
+    scheme, token = parts
+    if scheme.lower() != "bearer":
+        return None
+    return token
+
 
 
 class TokenPayload:
@@ -47,14 +63,21 @@ def create_access_token(
     return jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
 
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> User:
+async def get_current_user(authorization: str | None = Header(default=None, convert_underscores=False)) -> User:
     credentials_exception = HTTPException(
+
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+    token = _extract_bearer_token(authorization)
+    if token is None:
+        raise credentials_exception
+
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+
         email = payload.get("email") or payload.get("sub")
         tenant_id = payload.get("tenant_id")
         role = payload.get("role")

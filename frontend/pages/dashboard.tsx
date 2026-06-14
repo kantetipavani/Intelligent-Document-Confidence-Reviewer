@@ -528,27 +528,40 @@ export default function Dashboard() {
                   </div>
                   <div className="extraction-panel">
                     {selectedActivityIndex !== null ? (
-                      <ExtractedFields
+                        <ExtractedFields
                         fields={
                           (() => {
-                            const ev = activity[selectedActivityIndex];
-                            const extraction = ev?.payload?.extraction ?? ev?.payload;
+                            const ev = activityData[selectedActivityIndex];
+                            const payload = ev?.payload;
 
-                            if (extraction?.fields && typeof extraction.fields === "object") {
-                              const normalized = { ...extraction.fields };
-                              Object.keys(extraction).forEach((key) => {
-                                if (key === "fields" || Object.prototype.hasOwnProperty.call(normalized, key)) {
-                                  return;
-                                }
-                                normalized[key] = extraction[key];
-                              });
-                              return normalized;
-                            }
+                            // INFO payload examples:
+                            // - { extraction: { invoice_no: {value,confidence}, ... } }
+                            // - { extraction: { fields: { invoice_no: {value,confidence}, ... } } }
+                            // - { fields: { ... } }
+                            // Extract a "fields map" (invoice_no/date/...) to feed ExtractedFields.
 
-                            return extraction || {};
+                            const extraction = (payload as any)?.extraction;
+                            const extractionFields = extraction?.fields;
+                            const topFields = (payload as any)?.fields;
+
+                            const candidates = [
+                              extraction && typeof extraction === "object" ? extraction : null,
+                              extractionFields && typeof extractionFields === "object" ? extractionFields : null,
+                              topFields && typeof topFields === "object" ? topFields : null,
+                            ].filter(Boolean);
+
+                            // If extraction has nested fields wrapper, prefer that.
+                            // Otherwise take extraction itself.
+                            if (extractionFields && typeof extractionFields === "object") return extractionFields;
+                            if (topFields && typeof topFields === "object") return topFields;
+                            if (extraction && typeof extraction === "object") return extraction;
+
+                            return {};
                           })()
                         }
                       />
+
+
                     ) : (
                       <div className="empty-state selected-extraction-empty">
                         <h3>Select an extraction event</h3>
