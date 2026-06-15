@@ -15,7 +15,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Initialize Pipeline
-        run: echo "Pipeline Initialized"
+        run: |
+          echo "Pipeline Initialized"
+          echo "CircleCI feedback/process: https://circleci.com/docs/configuration-reference/ (repo config path: .circleci/config.yml)"
 
   code:
     name: CODE
