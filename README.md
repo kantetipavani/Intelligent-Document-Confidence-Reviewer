@@ -184,6 +184,28 @@ INDCR/
 
 ## ⚡ Quick Start
 
+### 🧪 Frontend (Test) Commands
+
+```bash
+# from repo root
+cd frontend
+
+# run unit tests (if configured)
+npm test
+
+# run in one-shot mode (no watch), when using Jest/Vitest
+npm test -- --runInBand
+
+# run typecheck (if available)
+npm run typecheck || true
+
+# run lint (if available)
+npm run lint || true
+
+# build for production
+npm run build
+```
+
 ### 📋 Prerequisites
 
 - **Node.js** 18+ (for frontend)
