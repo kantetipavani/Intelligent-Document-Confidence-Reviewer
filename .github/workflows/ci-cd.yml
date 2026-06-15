@@ -11,7 +11,6 @@ jobs:
   init:
     name: INIT
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -22,15 +21,36 @@ jobs:
     name: CODE
     needs: init
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Code Validation
+        run: echo "Code Stage Completed"
+
+  build-frontend:
+    name: BUILD FRONTEND
+    needs: code
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Source Code Validation
-        run: echo "Code Stage Completed"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
 
-  continuous-testing:
-    name: CONTINUOUS TESTING
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Frontend
+        run: npm run build
+
+  build-backend:
+    name: BUILD BACKEND
     needs: code
     runs-on: ubuntu-latest
 
@@ -45,7 +65,31 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Dependencies
+      - name: Install Requirements
+        run: pip install -r requirements.txt
+
+      - name: Build Backend
+        run: python -m compileall .
+
+  test:
+    name: TEST
+    needs:
+      - build-frontend
+      - build-backend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Test Dependencies
         run: |
           pip install -r requirements.txt
           pip install pytest
@@ -55,7 +99,7 @@ jobs:
 
   release:
     name: RELEASE
-    needs: continuous-testing
+    needs: test
     runs-on: ubuntu-latest
 
     defaults:
@@ -90,11 +134,29 @@ jobs:
       - name: Deploy Application
         run: echo "Deployment Successful"
 
-  feedback:
-    name: FEEDBACK
+  operate:
+    name: OPERATE
     needs: deploy
     runs-on: ubuntu-latest
 
     steps:
-      - name: Feedback Collection
-        run: echo "Collecting feedback and metrics"
+      - name: Application Running
+        run: echo "Application is running successfully"
+
+  monitor:
+    name: MONITOR
+    needs: operate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Monitor Application
+        run: echo "Monitoring application health"
+
+  feedback:
+    name: FEEDBACK
+    needs: monitor
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Collect Feedback
+        run: echo "Collecting logs, metrics and feedback"
