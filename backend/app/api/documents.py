@@ -6,18 +6,11 @@ from pydantic import BaseModel
 from app.core.config import settings
 from app.core.security import get_current_user
 
-
-
-
-
-
 from app.models.document import Document
 from app.models.user import User
 from app.services.llm_service import ExtractionResult, extract_invoice_from_document_bytes
 
 router = APIRouter()
-
-
 
 class DocumentCreateResponse(BaseModel):
     document_id: str | None = None

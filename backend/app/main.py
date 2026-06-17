@@ -47,14 +47,15 @@ def create_app() -> FastAPI:
                 settings.skip_db = True
                 logger.warning("MongoDB initialization failed; running without persistence: %s", exc)
 
-        # Start background extraction worker.
-        # Runs alongside the FastAPI server and consumes from the in-process asyncio queue.
+        # Legacy in-process worker (kept for backward compatibility).
+        # Celery/Redis is the preferred async path when running with Docker Compose.
         try:
             from app.workers.extraction_worker import extraction_worker_loop
 
             asyncio.create_task(extraction_worker_loop())
         except Exception:
             logger.exception("Failed to start extraction worker")
+
 
 
     app.include_router(health_router, prefix="/health", tags=["health"])

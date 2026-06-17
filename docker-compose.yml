@@ -1,9 +1,11 @@
 services:
   mongo:
-    image: mongo:7
+    image: mongo:7.0
+
     container_name: indcr-mongo
     ports:
       - "27017:27017"
+
     volumes:
       - mongo_data:/data/db
     healthcheck:
@@ -26,6 +28,23 @@ services:
       ME_CONFIG_BASICAUTH_USERNAME: ""
       ME_CONFIG_BASICAUTH_PASSWORD: ""
 
+
+  redis:
+    image: redis:7.2-alpine
+
+
+    container_name: indcr-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+
+
+
   backend:
     build:
       context: ./backend
@@ -34,6 +53,8 @@ services:
     depends_on:
       mongo:
         condition: service_healthy
+      redis:
+        condition: service_started
     ports:
       - "8000:8000"
     environment:
@@ -43,7 +64,43 @@ services:
       MONGODB_DB: ${MONGODB_DB}
       JWT_SECRET: ${JWT_SECRET}
       SKIP_DB: ${SKIP_DB}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     # Uvicorn listens on 8000
+
+  celery_worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.celery
+    container_name: indcr-celery-worker
+    depends_on:
+      redis:
+        condition: service_started
+      mongo:
+        condition: service_healthy
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      # Pass through the same env vars as backend so extraction pipeline can access LLM keys.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
+      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_DB: ${MONGODB_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      SKIP_DB: ${SKIP_DB}
+    command: ["celery", "-A", "app.celery_worker_entrypoint", "worker", "-l", "INFO", "-Q", "extraction"]
+
+  flower:
+    image: mher/flower:2.0.1
+    container_name: indcr-flower
+    depends_on:
+      redis:
+        condition: service_started
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+    ports:
+      - "5555:5555"
+    command: ["flower", "--port=5555", "--broker=redis://redis:6379/0"]
 
   frontend:
     build:
@@ -59,4 +116,5 @@ services:
 
 volumes:
   mongo_data:
+
 
