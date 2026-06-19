@@ -32,7 +32,6 @@ services:
   redis:
     image: redis:7.2-alpine
 
-
     container_name: indcr-redis
     ports:
       - "6379:6379"
@@ -42,10 +41,8 @@ services:
       timeout: 3s
       retries: 10
 
-
-
-
   backend:
+
     build:
       context: ./backend
       dockerfile: Dockerfile
