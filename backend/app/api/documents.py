@@ -77,16 +77,29 @@ async def upload_document(
     )
     await run.insert()
 
-    # Publish job to in-process asyncio queue.
-    from app.queue.extraction_queue import ExtractionJob, publish_extraction_job
+    # Enqueue extraction via Celery so it runs in the Docker Celery worker (Redis).
+    # This keeps POST /documents/upload fast and makes extraction truly async.
+    from app.celery_app import celery_app
 
-    job = ExtractionJob(
-        tenant_id=tenant_id,
-        document_id=str(doc.id),
-        file_bytes=file_bytes,
-        filename=filename,
+    extraction_run_id = str(run.id)
+
+    # Celery task signature: payload = {tenant_id, document_id, extraction_run_id, ...}
+    # NOTE: We pass file_bytes so the worker can run extraction even without a shared filesystem.
+    payload = {
+        "tenant_id": tenant_id,
+        "document_id": str(doc.id),
+        "extraction_run_id": extraction_run_id,
+        "file_bytes": file_bytes,
+        "content_type": content_type,
+        "filename": filename,
+    }
+
+    # Fire-and-forget: client only needs the placeholder run record.
+    celery_app.send_task(
+        "app.tasks.extraction_tasks.run_extraction",
+        args=[payload],
     )
-    await publish_extraction_job(job)
+
 
     # Audit: document uploaded / extraction enqueued
     try:
