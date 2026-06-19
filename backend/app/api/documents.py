@@ -10,7 +10,32 @@ from app.models.document import Document
 from app.models.user import User
 from app.services.llm_service import ExtractionResult, extract_invoice_from_document_bytes
 
+from app.core.cache import get_cached, set_cached, invalidate
+
+from app.core.metrics import cache_hits_total, cache_misses_total
+
+
 router = APIRouter()
+
+
+# Cache key helpers
+
+def _k_documents_list(tenant_id: str) -> str:
+    return f"documents:list:{tenant_id}"
+
+
+def _k_document_detail(tenant_id: str, document_id: str) -> str:
+    return f"documents:detail:{tenant_id}:{document_id}"
+
+
+def _k_activity_list(tenant_id: str, email: str) -> str:
+    return f"activity:list:{tenant_id}:{email.lower()}"
+
+
+def _k_dashboard_stats(tenant_id: str) -> str:
+    return f"dashboard:stats:{tenant_id}"
+
+
 
 class DocumentCreateResponse(BaseModel):
     document_id: str | None = None
@@ -139,14 +164,26 @@ async def get_document(
     if tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant mismatch")
 
+    cache_key = _k_document_detail(tenant_id, document_id)
+    cached = await get_cached(cache_key)
+    if cached is not None:
+        cache_hits_total.labels(endpoint="GET /documents/{id}").inc()
+        return cached
+
+    cache_misses_total.labels(endpoint="GET /documents/{id}").inc()
+
     doc = await Document.get(document_id)
     if not doc or doc.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="document not found")
-    return {
+
+    result = {
         "document_id": str(doc.id),
         "tenant_id": doc.tenant_id,
         "filename": doc.filename,
         "content_type": doc.content_type,
         "source_text": doc.source_text,
     }
+    await set_cached(cache_key, result, ttl=120)
+    return result
+
 

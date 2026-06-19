@@ -17,6 +17,11 @@ from app.api.tenants import router as tenants_router
 from app.api.versions import router as versions_router
 from app.api.activity import router as activity_router
 from app.api.logout import router as logout_router
+from app.api.metrics import router as metrics_router
+from app.api.dashboard import router as dashboard_router
+
+
+
 
 from app.core.config import settings
 from app.db.init_db import init_db
@@ -59,7 +64,9 @@ def create_app() -> FastAPI:
 
 
     app.include_router(health_router, prefix="/health", tags=["health"])
+    app.include_router(metrics_router, prefix="/metrics", tags=["metrics"])
     app.include_router(status_router, prefix="/documents", tags=["documents"])
+
 
     app.include_router(tenants_router, prefix="/tenants", tags=["tenants"])
 
