@@ -88,6 +88,8 @@ services:
       SKIP_DB: ${SKIP_DB}
     command: ["celery", "-A", "app.celery_worker_entrypoint", "worker", "-l", "INFO", "-Q", "extraction"]
 
+
+
   flower:
     image: mher/flower:2.0.1
     container_name: indcr-flower
