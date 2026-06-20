@@ -12,10 +12,12 @@ logger = logging.getLogger(__name__)
 
 
 def _redis_url() -> str:
-    # Keep it simple: project currently passes redis urls for celery.
-    # Use Redis DB 2 for caching to avoid clobbering other Redis data.
-    # Prefer env var if present.
+    # docker-compose.yml provisions:
+    #   redis://redis:6379/0 (celery broker)
+    #   redis://redis:6379/1 (celery result)
+    #   redis://redis:6379/2 (cache)
     return "redis://redis:6379/2"
+
 
 
 _redis_client: Redis | None = None
@@ -26,11 +28,12 @@ async def get_redis() -> Redis:
     if _redis_client is None:
         _redis_client = Redis.from_url(
             _redis_url(),
-            decode_responses=True,  # we will store JSON as string
+            decode_responses=True,  # store JSON as string
             socket_connect_timeout=2,
             socket_timeout=2,
         )
     return _redis_client
+
 
 
 def _cache_key(key: str) -> str:

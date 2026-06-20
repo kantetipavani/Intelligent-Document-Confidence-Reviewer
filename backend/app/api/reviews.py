@@ -9,6 +9,9 @@ from app.models.review_version import ReviewVersion
 from app.models.user import User
 from app.services.version_service import create_review_version
 
+from app.api.documents import _k_dashboard_stats
+
+
 router = APIRouter()
 
 
@@ -63,8 +66,17 @@ async def approve_review(
     except Exception:
         pass
 
+    # Cache invalidation: dashboard stats depend on review/approval.
+    try:
+        from app.core.cache import invalidate
+
+        await invalidate(_k_dashboard_stats(doc.tenant_id))
+    except Exception:
+        pass
+
     return {
         "version_number": version.version_number,
         "status": "approved",
     }
+
 

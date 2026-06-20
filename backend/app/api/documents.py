@@ -15,6 +15,7 @@ from app.core.cache import get_cached, set_cached, invalidate
 from app.core.metrics import cache_hits_total, cache_misses_total
 
 
+
 router = APIRouter()
 
 
@@ -50,6 +51,7 @@ async def upload_document(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
+
     # Enforce tenant isolation: tenant is derived from the JWT, not from request fields.
     tenant_id = current_user.tenant_id
 
@@ -91,6 +93,10 @@ async def upload_document(
 
     doc = Document(tenant_id=tenant_id, filename=filename, content_type=content_type, source_text=None)
     await doc.insert()
+
+    # Cache invalidation: uploading affects cached document list.
+    await invalidate(_k_documents_list(tenant_id))
+
 
     # Create an extraction run placeholder.
     from app.models.extraction_run import ExtractionRun
