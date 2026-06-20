@@ -10,7 +10,15 @@ from passlib.context import CryptContext
 from app.core.config import settings
 from app.models.user import User
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Passlib bcrypt can fail if the installed `bcrypt` wheel is incompatible.
+# Avoid hard-crashing the app by allowing graceful fallback to pure-python. 
+# This is critical for login/register in dev environments.
+pwd_context = CryptContext(
+    schemes=["bcrypt"],
+    deprecated="auto",
+    bcrypt__ident="2b",
+)
+
 
 
 def _extract_bearer_token(authorization: str | None) -> str | None:

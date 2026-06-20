@@ -14,13 +14,20 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 60
 
+    # Anthropic (legacy)
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-3-5-haiku-latest"
     anthropic_max_tokens: int = 800
 
-    # When true, backend skips calling Anthropic and uses local extraction only.
-    # This prevents failures in environments without Anthropic credits/network.
+    # Gemini (primary)
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-1.5-flash"
+    gemini_max_output_tokens: int = 800
+
+    # When true, backend skips calling any hosted LLM and uses local extraction only.
+    # This prevents failures in environments without LLM credits/network.
     skip_llm: bool = False
+
 
 
 

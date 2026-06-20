@@ -120,6 +120,19 @@ async def login(payload: LoginPayload) -> AuthResponse:
     import re
 
     email = normalize_email(payload.email)
+    if payload.password is None or len(payload.password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="password must be at least 6 characters",
+        )
+
+    # bcrypt (via passlib) supports max 72 bytes input; long passwords crash hashing.
+    # Bytes length matters, not just character count.
+    if len(payload.password.encode("utf-8")) > 72:
+        raise HTTPException(
+            status_code=400,
+            detail="password must be at most 72 bytes (use shorter password)",
+        )
 
     # Try exact match first (fast + avoids any regex edge-cases).
     user = await User.find_one(User.email == email)

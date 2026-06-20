@@ -73,10 +73,18 @@ async def set_cached(key: str, value: Any, ttl: int) -> None:
 
 
 async def invalidate(key: str) -> None:
-    redis = await get_redis()
-    full_key = _cache_key(key)
+    """Invalidate a cache key.
+
+    Must never break primary API requests.
+    If Redis is down/unreachable, we just log and return.
+    """
+
     try:
+        redis = await get_redis()
+        full_key = _cache_key(key)
         await redis.delete(full_key)
     except Exception:
-        logger.exception("cache invalidate failed for key=%s", full_key)
+        # Never propagate Redis errors to callers.
+        logger.exception("cache invalidate failed for key=%s", _cache_key(key))
+
 

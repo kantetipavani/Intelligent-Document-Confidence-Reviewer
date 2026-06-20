@@ -1,14 +1,12 @@
-# TODO Deliverable: Redis + Celery + Flower integration
+# TODO - Fix login bcrypt/passlib + password length crash
 
-## Planned changes
-- [ ] Add Redis, Celery worker, and Flower to `docker-compose.yml`.
-- [ ] Add Celery app/config in backend.
-- [ ] Create a Celery task that runs the existing extraction pipeline.
-- [ ] Update extraction API to trigger Celery asynchronously.
-- [ ] Ensure status transitions update `ExtractionRun` and create review versions.
-- [ ] Update backend dependencies (`backend/requirements.txt`).
-- [ ] Update docs / evaluation report text so it matches actual services/workflows built.
+## Plan
+- [ ] Read & understand current auth/security code (already reviewed `app/core/security.py` and `app/api/auth.py`).
+- [x] Add input validation in `/login` to block passwords > 72 bytes (mirrors `/register`).
 
-## Demo notes
-- [ ] Add a README note reminding Docker Desktop must be running.
+- [x] Fix local dependency mismatch: ensure `bcrypt` + `passlib` are compatible in `backend/.venv`.
+- [x] Re-run `uvicorn` and test `/auth/login` for success.
+
+
+
 

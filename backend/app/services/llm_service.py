@@ -181,9 +181,10 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
     except Exception:
         local_fields = None
 
-    # If Anthropic key is not configured, rely solely on local heuristic.
-    if not settings.anthropic_api_key:
+    # If no LLM key is configured, rely solely on local heuristic.
+    if not getattr(settings, "gemini_api_key", "") and not getattr(settings, "anthropic_api_key", ""):
         if local_fields is None:
+
             raise RuntimeError("no Anthropic API key and local extraction failed")
 
         invoice_no = local_fields.get("invoice_no", {})
@@ -206,26 +207,58 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
             fields=local_fields,
         )
 
-    from anthropic import AsyncAnthropic
+    # Gemini (google-genai)
+    try:
+        from google import genai
+    except ModuleNotFoundError:
+        # If the google-genai dependency isn't available in the running env,
+        # fall back to local heuristic so the UI still gets fields.
+        if local_fields is not None:
+            invoice_no = local_fields.get("invoice_no", {})
+            vendor = local_fields.get("vendor", {})
+            amount = local_fields.get("amount", {})
+            return ExtractionResult(
+                invoice_number={
+                    "value": invoice_no.get("value", ""),
+                    "confidence": float(invoice_no.get("confidence", 0.0)),
+                },
+                vendor_name={
+                    "value": vendor.get("value", ""),
+                    "confidence": float(vendor.get("confidence", 0.0)),
+                },
+                invoice_total={
+                    "value": amount.get("value", ""),
+                    "confidence": float(amount.get("confidence", 0.0)),
+                },
+                fields=local_fields,
+            )
+        raise
 
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
-    response = await client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=settings.anthropic_max_tokens,
-        temperature=0,
-        system=SYSTEM_PROMPT,
-        messages=[
-            {
-                "role": "user",
-                "content": (
-                    "Extract invoice_number, vendor_name, and invoice_total from this invoice text:\n\n"
-                    f"{document_text}"
-                ),
-            }
-        ],
+    api_key = getattr(settings, "gemini_api_key", "") or getattr(settings, "anthropic_api_key", "")
+    model = getattr(settings, "gemini_model", "") or getattr(settings, "anthropic_model", "")
+    max_tokens = getattr(settings, "gemini_max_tokens", 800) or getattr(settings, "anthropic_max_tokens", 800)
+
+    client = genai.Client(api_key=api_key)
+
+
+
+    prompt = (
+        f"{SYSTEM_PROMPT}\n\n"
+        "Extract invoice_number, vendor_name, and invoice_total from this invoice text:\n\n"
+        f"{document_text}"
     )
 
-    text = _message_text(response)
+    resp = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config={
+            "temperature": 0,
+            "max_output_tokens": max_tokens,
+        },
+    )
+
+
+    text = getattr(resp, "text", None) or str(resp)
 
     # Try to parse the LLM output. If it fails, fall back to local heuristic
     # so the UI doesn't show "OCR extraction failed".
@@ -256,12 +289,71 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
     # Ensure the generic `fields` map exists for the frontend.
     # Keep behavior compatible with unit tests: if the LLM does not provide
     # `fields`, leave it empty. (Frontend can fall back to top-level fields.)
-    if parsed.fields is None:  # type: ignore[comparison-overlap]
-        parsed.fields = {}
+        # Build frontend fields map expected by UI
+    parsed.fields = {
+        "invoice_no": (
+            local_fields.get("invoice_no")
+            if local_fields and local_fields.get("invoice_no")
+            else {
+                "value": parsed.invoice_number.value,
+                "confidence": parsed.invoice_number.confidence,
+            }
+        ),
+        "vendor": (
+            local_fields.get("vendor")
+            if local_fields and local_fields.get("vendor")
+            else {
+                "value": parsed.vendor_name.value,
+                "confidence": parsed.vendor_name.confidence,
+            }
+        ),
+        "amount": (
+            local_fields.get("amount")
+            if local_fields and local_fields.get("amount")
+            else {
+                "value": parsed.invoice_total.value,
+                "confidence": parsed.invoice_total.confidence,
+            }
+        ),
+        "date": (
+            local_fields.get("date")
+            if local_fields and local_fields.get("date")
+            else {
+                "value": "",
+                "confidence": 0.0,
+            }
+        ),
+        "gstin": (
+            local_fields.get("gstin")
+            if local_fields and local_fields.get("gstin")
+            else {
+                "value": "",
+                "confidence": 0.0,
+            }
+        ),
+        "status": (
+            local_fields.get("status")
+            if local_fields and local_fields.get("status")
+            else {
+                "value": "EXTRACTED",
+                "confidence": 1.0,
+            }
+        ),
+    }
+
+    print("\n===== DOCUMENT TEXT =====")
+    print(document_text[:1000])
+    print("=========================\n")
+
+    print("\n===== GEMINI RESPONSE =====")
+    print(text)
+    print("===========================\n")
+
+    print("\n===== FINAL RESPONSE =====")
+    print(parsed.model_dump())
+    print("==========================\n")
 
     return parsed
-
-
 
 
 def parse_extraction_json(raw_text: str) -> ExtractionResult:
@@ -300,8 +392,6 @@ def _normalize_payload(data: dict[str, Any]) -> dict[str, Any]:
         "vendor_name": _normalize_field(data.get("vendor_name")),
         "invoice_total": _normalize_field(data.get("invoice_total")),
     }
-
-
 
 
 def _normalize_field(value: Any) -> dict[str, Any]:
