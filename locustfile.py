@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import math
 import os
-import time
 from collections import defaultdict
-from typing import DefaultDict, List
+from typing import DefaultDict, List, Optional
 
 from locust import HttpUser, task, between, events
+
 
 
 class INDCRUser(HttpUser):
     wait_time = between(1, 3)
 
+    tenant_id: Optional[str] = None
+    document_id: Optional[str] = None
+
     def on_start(self):
-        """Login once per user"""
+        """Login once per user and discover tenant from /auth/me."""
         response = self.client.post(
             "/auth/login",
             json={
@@ -27,9 +30,43 @@ class INDCRUser(HttpUser):
         else:
             self.token = None
 
-        self.headers = {
-            "Authorization": f"Bearer {self.token}",
-        } if self.token else {}
+        self.headers = (
+            {"Authorization": f"Bearer {self.token}"}
+            if self.token
+            else {}
+        )
+
+        # Discover tenant_id (needed for /documents/{tenant_id}/{document_id})
+        if self.headers:
+            me = self.client.get("/auth/me", headers=self.headers)
+            if me.status_code == 200:
+                self.tenant_id = me.json().get("tenant_id")
+
+    def _ensure_uploaded_document(self) -> None:
+        if self.document_id and self.tenant_id:
+            return
+
+        # If DB is running, we can upload; tenant scoping is handled by JWT.
+        files = {"file": ("test.txt", b"hello world", "text/plain")}
+        # API requires filename field too.
+        data = {"filename": "test.txt"}
+
+        resp = self.client.post(
+            "/documents/upload",
+            headers=self.headers,
+            files=files,
+            data=data,
+        )
+
+        if resp.status_code != 200:
+            # Let failure count as error in Locust.
+            return
+
+        self.document_id = resp.json().get("document_id")
+        if not self.tenant_id:
+            me = self.client.get("/auth/me", headers=self.headers)
+            if me.status_code == 200:
+                self.tenant_id = me.json().get("tenant_id")
 
     # 1. login (weight 1)
     @task(1)
@@ -42,28 +79,27 @@ class INDCRUser(HttpUser):
             },
         )
 
-    # 2. list_documents (weight 4)
-    @task(4)
-    def list_documents(self):
-        self.client.get("/documents", headers=self.headers)
+    # 2. upload_document (weight 2)
+    @task(2)
+    def upload_document(self):
+        self._ensure_uploaded_document()
 
-    # 3. get_document (weight 3)
-    @task(3)
+    # 3. get_document (weight 4)
+    @task(4)
     def get_document(self):
-        self.client.get("/documents/1", headers=self.headers)
+        self._ensure_uploaded_document()
+        if not (self.tenant_id and self.document_id):
+            return
+        self.client.get(
+            f"/documents/{self.tenant_id}/{self.document_id}",
+            headers=self.headers,
+        )
 
     # 4. get_activity (weight 2)
     @task(2)
     def get_activity(self):
-        self.client.get("/activity", headers=self.headers)
+        self.client.get("/activity/me", headers=self.headers)
 
-    # 5. upload_document (weight 1)
-    @task(1)
-    def upload_document(self):
-        files = {
-            "file": ("test.txt", b"hello world", "text/plain"),
-        }
-        self.client.post("/documents/upload", files=files, headers=self.headers)
 
 
 # -----------------------------

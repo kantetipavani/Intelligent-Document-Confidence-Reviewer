@@ -1,0 +1,4 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+GET,/documents/1,HTTPError('404 Client Error: Not Found for url: /documents/1'),2,2026-06-22T19:14:23Z,2026-06-22T19:14:30Z
+GET,/activity,HTTPError('404 Client Error: Not Found for url: /activity'),3,2026-06-22T19:14:18Z,2026-06-22T19:14:25Z
+GET,/documents,HTTPError('404 Client Error: Not Found for url: /documents'),5,2026-06-22T19:14:19Z,2026-06-22T19:14:34Z

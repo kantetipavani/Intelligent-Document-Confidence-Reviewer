@@ -1,0 +1,5 @@
+Method,Name,Error,Occurrences,First Seen,Last Seen
+POST,/documents/upload,HTTPError('422 Client Error: Unprocessable Content for url: /documents/upload'),5,2026-06-22T19:15:02Z,2026-06-22T19:15:14Z
+GET,/documents/1,HTTPError('404 Client Error: Not Found for url: /documents/1'),1,2026-06-22T19:15:08Z,2026-06-22T19:15:08Z
+GET,/activity,HTTPError('404 Client Error: Not Found for url: /activity'),1,2026-06-22T19:15:11Z,2026-06-22T19:15:11Z
+GET,/documents,HTTPError('404 Client Error: Not Found for url: /documents'),2,2026-06-22T19:15:06Z,2026-06-22T19:15:16Z
