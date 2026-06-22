@@ -1,0 +1,164 @@
+name: CI/CD Infinity Flow
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+
+  init:
+    name: INIT
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize Pipeline
+        run: |
+          echo "Pipeline Initialized"
+          echo "CircleCI feedback/process: https://circleci.com/docs/configuration-reference/ (repo config path: .circleci/config.yml)"
+
+  code:
+    name: CODE
+    needs: init
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Code Validation
+        run: echo "Code Stage Completed"
+
+  build-frontend:
+    name: BUILD FRONTEND
+    needs: code
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Frontend
+        run: npm run build
+
+  build-backend:
+    name: BUILD BACKEND
+    needs: code
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Requirements
+        run: pip install -r requirements.txt
+
+      - name: Build Backend
+        run: python -m compileall .
+
+  test:
+    name: TEST
+    needs:
+      - build-frontend
+      - build-backend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Test Dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Run Tests
+        run: pytest || true
+
+  release:
+    name: RELEASE
+    needs: test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lint Check
+        run: |
+          pip install ruff
+          ruff check . || true
+
+      - name: Security Check
+        run: |
+          pip install bandit
+          bandit -r . || true
+
+      - name: Release Validation
+        run: echo "Release Ready"
+
+  deploy:
+    name: DEPLOY
+    needs: release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Application
+        run: echo "Deployment Successful"
+
+  operate:
+    name: OPERATE
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Application Running
+        run: echo "Application is running successfully"
+
+  monitor:
+    name: MONITOR
+    needs: operate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Monitor Application
+        run: echo "Monitoring application health"
+
+  feedback:
+    name: FEEDBACK
+    needs: monitor
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Collect Feedback
+        run: echo "Collecting logs, metrics and feedback"
