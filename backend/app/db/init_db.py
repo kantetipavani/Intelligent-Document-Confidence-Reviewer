@@ -13,11 +13,17 @@ from app.models.audit_event import AuditEvent
 
 
 async def init_db() -> None:
+    # Ensure Mongo is reachable before Beanie initialization.
     client = AsyncIOMotorClient(settings.mongodb_uri)
+    await client.admin.command({"ping": 1})
+
     await init_beanie(
         database=client[settings.mongodb_db],
+        # Ensure we always register the correct User model.
         document_models=[Tenant, Document, ExtractionRun, ReviewVersion, User, AuditEvent],
     )
+
+
 
 
 

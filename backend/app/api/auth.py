@@ -67,7 +67,10 @@ async def register(payload: RegisterPayload) -> AuthResponse:
         )
 
 
-    existing = await User.find_one(User.email == email)
+    # Use repository-style filter with raw field access to avoid Beanie
+    # schema/attribute mismatches during dev.
+    existing = await User.find_one({"email": email})
+
     if existing:
         raise HTTPException(status_code=409, detail="user already exists")
 
@@ -134,18 +137,29 @@ async def login(payload: LoginPayload) -> AuthResponse:
             detail="password must be at most 72 bytes (use shorter password)",
         )
 
-    # Try exact match first (fast + avoids any regex edge-cases).
-    user = await User.find_one(User.email == email)
-    if not user:
-        # Case-insensitive fallback for casing mismatches.
-        email_regex = f"^{re.escape(email)}$"
-        # Beanie document field filtering supports regex operations at runtime.
-        # mypy can't infer the method on the underlying model field type.
-        email_regex_filter = User.email  # keep runtime behavior; help mypy
-        user = await User.find_one(email_regex_filter.regex(email_regex, "i"))  # type: ignore[attr-defined]
+    # Ensure Beanie has been initialized (otherwise login crashes with
+    # `CollectionWasNotInitialized`).
+    from beanie.exceptions import CollectionWasNotInitialized
+    try:
+        # Exact match
+        user = await User.find_one({"email": email})
 
+        # Case-insensitive fallback
+        if not user:
+            user = await User.find_one({"email": {"$regex": f"^{email}$", "$options": "i"}})
+    except CollectionWasNotInitialized:
+        # Beanie init likely failed on startup. Try one-time lazy init so the UI can log in
+        # without requiring a full backend restart.
+        try:
+            from app.db.init_db import init_db
 
-
+            await init_db()
+            user = await User.find_one({"email": email})
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail="Database not initialized. Please fix MongoDB connection and restart backend.",
+            ) from exc
 
 
     if not user:
@@ -155,6 +169,7 @@ async def login(payload: LoginPayload) -> AuthResponse:
             email,
         )
         raise HTTPException(status_code=401, detail="Invalid credentials")
+
 
     try:
         is_valid = verify_password(payload.password, user.password_hash)

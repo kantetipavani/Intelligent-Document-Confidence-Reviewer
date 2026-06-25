@@ -66,6 +66,7 @@ services:
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     # Uvicorn listens on 8000
 
+  # Legacy Celery worker (kept for backward compatibility; extraction trigger uses Kafka by default)
   celery_worker:
     build:
       context: ./backend
@@ -79,7 +80,6 @@ services:
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      # Pass through the same env vars as backend so extraction pipeline can access LLM keys.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
       MONGODB_URI: ${MONGODB_URI}
@@ -87,6 +87,113 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       SKIP_DB: ${SKIP_DB}
     command: ["celery", "-A", "app.celery_worker_entrypoint", "worker", "-l", "INFO", "-Q", "extraction"]
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    ports:
+      - "2181:2181"
+    container_name: indcr-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: indcr-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+    depends_on:
+      - zookeeper
+
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: indcr-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
+
+  kafka_extraction_consumer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: indcr-kafka-extraction-consumer
+    depends_on:
+      mongo:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC_EXTRACTION_REQUESTS: invoice_extraction_requested
+      KAFKA_CONSUMER_GROUP_ID: idc-extraction-consumer
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
+      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_DB: ${MONGODB_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      SKIP_DB: ${SKIP_DB}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    command: ["python", "-m", "app.workers.kafka_extraction_consumer"]
+
+  grpc_extraction_server:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: indcr-grpc-extraction-server
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      GRPC_HOST: 0.0.0.0
+      GRPC_PORT: 50051
+      MONGODB_URI: ${MONGODB_URI}
+      MONGODB_DB: ${MONGODB_DB}
+      SKIP_DB: ${SKIP_DB}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
+      JWT_SECRET: ${JWT_SECRET}
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    ports:
+      - "50051:50051"
+    command: ["python", "-m", "app.grpc.server_entrypoint"]
+
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: indcr-jaeger
+    ports:
+      - "16686:16686" # UI
+      - "4317:4317"   # OTLP gRPC receiver
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.102.0
+    container_name: indcr-otel-collector
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yml:ro
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    depends_on:
+      - jaeger
+
+
+
+
 
 
 

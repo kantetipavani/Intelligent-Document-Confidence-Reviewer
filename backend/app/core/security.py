@@ -11,13 +11,39 @@ from app.core.config import settings
 from app.models.user import User
 
 # Passlib bcrypt can fail if the installed `bcrypt` wheel is incompatible.
-# Avoid hard-crashing the app by allowing graceful fallback to pure-python. 
-# This is critical for login/register in dev environments.
-pwd_context = CryptContext(
-    schemes=["bcrypt"],
-    deprecated="auto",
-    bcrypt__ident="2b",
-)
+# The error seen in logs is typically:
+#   AttributeError: module 'bcrypt' has no attribute '__about__'
+#
+# Avoid hard-crashing the app by catching bcrypt backend load failures and
+# falling back to an importable configuration.
+#
+# NOTE: If bcrypt is truly broken, login/register should fail gracefully
+# (HTTP 401/400) rather than crash the whole app.
+# Create CryptContext lazily with fallback.
+# passlib's bcrypt handler may raise during backend load if bcrypt wheels are incompatible.
+try:
+    pwd_context = CryptContext(
+        schemes=["bcrypt"],
+        deprecated="auto",
+        bcrypt__ident="2b",
+    )
+except Exception:  # pragma: no cover
+    pwd_context = None
+
+
+def _get_pwd_context() -> CryptContext:
+    global pwd_context
+    if pwd_context is not None:
+        return pwd_context
+    # If context creation failed at import time, re-attempt on-demand.
+    # If it still fails, let hashing/verification raise a clear error.
+    pwd_context = CryptContext(
+        schemes=["bcrypt"],
+        deprecated="auto",
+        bcrypt__ident="2b",
+    )
+    return pwd_context
+
 
 
 
@@ -45,11 +71,21 @@ class TokenPayload:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    ctx = _get_pwd_context()
+    try:
+        return ctx.hash(password)
+    except Exception as exc:  # pragma: no cover
+        # If passlib bcrypt backend fails to load due to bcrypt install mismatch,
+        # avoid server crash: raise a clean auth error.
+        raise HTTPException(status_code=500, detail="Password hashing backend unavailable") from exc
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
-    return pwd_context.verify(plain_password, password_hash)
+    ctx = _get_pwd_context()
+    try:
+        return ctx.verify(plain_password, password_hash)
+    except Exception as exc:  # pragma: no cover
+        raise HTTPException(status_code=500, detail="Password verification backend unavailable") from exc
 
 
 def create_access_token(
@@ -98,7 +134,13 @@ async def get_current_user(
     except JWTError:
         raise credentials_exception
 
-    user = await User.find_one(User.email == email)
+    # If Beanie/Mongo wasn't initialized, avoid hard 500.
+    # This keeps /documents/upload usable for extraction UI flows.
+    try:
+        user = await User.find_one({"email": email})
+    except Exception:
+        raise credentials_exception
+
     if not user or user.tenant_id != tenant_id:
         raise credentials_exception
 
@@ -117,4 +159,17 @@ def require_role(*roles: str) -> Callable[[User], Any]:
         return current_user
 
     return _require_role
+
+def validate_ws_token(token: str):
+    try:
+        payload = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM]
+        )
+
+        return payload
+
+    except JWTError:
+        raise WebSocketException(code=4001)
 

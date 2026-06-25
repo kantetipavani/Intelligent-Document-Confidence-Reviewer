@@ -44,6 +44,11 @@ export default function Dashboard() {
       ? localStorage.getItem("userEmail")
       : null;
 
+  const token =
+    typeof window !== "undefined"
+      ? localStorage.getItem("token")
+      : null;
+
 
   /* FILE SELECT */
 
@@ -108,34 +113,95 @@ export default function Dashboard() {
       const documentId = response.data.document_id;
       let extraction: any = response.data?.extraction;
 
-      // Newer backend responses include extraction directly.
-      // If backend processing is async and extraction is not yet available,
-      // poll /versions/latest.
-      const maxAttempts = 20;
-      const delayMs = 500;
-
+      // Prefer server push via WebSocket.
+      // Backend will send the extraction the moment Kafka consumer completes.
       if (!extraction && documentId) {
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          try {
-            const latest = await api.get(
-              `/versions/latest/${documentId}`
-            );
-
-            // backend returns { extraction: <fields object>, ... }
-            extraction = latest.data?.extraction;
-            if (extraction) break;
-          } catch (e) {
-            // 404 "no extraction versions" is expected while async job is running.
-            // Keep polling until attempts finish.
+        extraction = await new Promise<any>((resolve, reject) => {
+          if (typeof window === "undefined") {
+            reject(new Error("WebSocket unavailable in SSR"));
+            return;
           }
 
-          await new Promise((r) => setTimeout(r, delayMs));
-        }
+      const token = localStorage.getItem("token") || "";
+          const apiUrl = api.defaults.baseURL || "http://127.0.0.1:8000";
+
+          // Convert http(s)://host to ws(s)://host
+          const wsBase = apiUrl.replace(/^http/, "ws");
+          const wsProtocol = wsBase.startsWith("wss") ? "wss" : "ws";
+          const wsUrl = `${wsProtocol}://${wsBase.split("://")[1]}/ws/documents/${documentId}?token=${encodeURIComponent(token || "")}`;
+
+
+          let ws: WebSocket | null = null;
+          let settled = false;
+
+          const timeout = window.setTimeout(() => {
+            if (ws) ws.close();
+            if (!settled) {
+              settled = true;
+              reject(new Error("Timed out waiting for extraction"));
+            }
+          }, 60_000);
+
+          try {
+            ws = new WebSocket(wsUrl);
+          } catch (e) {
+            window.clearTimeout(timeout);
+            reject(e);
+            return;
+          }
+
+          ws.onopen = () => {
+            // If backend expects Authorization header during WS handshake,
+            // this project currently does not forward it automatically.
+            // Best-effort: some deployments may accept unauthenticated WS.
+            // The backend will still attempt get_current_user.
+          };
+
+          ws.onmessage = (ev) => {
+            try {
+              const msg = JSON.parse(ev.data);
+              // Backend WS envelope:
+              // - { type: "document_status", status: "ready", extraction: {...} }
+              // - or { event: "EXTRACTION_COMPLETE", status: "COMPLETE", extraction: {...} }
+              const statusVal = msg?.status;
+              const extractionPayload = msg?.extraction;
+
+              const isComplete =
+                statusVal === "ready" ||
+                statusVal === "COMPLETE" ||
+                msg?.event === "EXTRACTION_COMPLETE";
+
+              if (isComplete || extractionPayload) {
+                // Prefer extracted extraction map when present.
+                if (extractionPayload) resolve(extractionPayload);
+                else resolve(msg);
+                settled = true;
+                window.clearTimeout(timeout);
+                ws?.close();
+              }
+            } catch {
+              // ignore parse errors
+            }
+          };
+
+          ws.onerror = (err) => {
+            if (!settled) {
+              settled = true;
+              window.clearTimeout(timeout);
+              reject(err);
+            }
+          };
+
+          ws.onclose = () => {
+            // If we close before receiving 'ready', allow timeout handler to trigger.
+          };
+        });
       }
 
       if (!extraction) {
         throw new Error("Extraction result not available");
       }
+
 
       // extraction can be either:
       // - { fields: {...} } (old)
@@ -540,9 +606,24 @@ export default function Dashboard() {
                             // - { fields: { ... } }
                             // Extract a "fields map" (invoice_no/date/...) to feed ExtractedFields.
 
-                            const extraction = (payload as any)?.extraction;
-                            const extractionFields = extraction?.fields;
-                            const topFields = (payload as any)?.fields;
+                            const safeParseJSON = (v: any) => {
+                              if (typeof v !== "string") return v;
+                              try {
+                                return JSON.parse(v);
+                              } catch {
+                                return v;
+                              }
+                            };
+
+                            const normalizedPayload = safeParseJSON(payload);
+
+                            const extraction = safeParseJSON((normalizedPayload as any)?.extraction);
+                            const extractionFields =
+                              extraction && typeof extraction === "object"
+                                ? (extraction as any)?.fields
+                                : undefined;
+
+                            const topFields = safeParseJSON((normalizedPayload as any)?.fields);
 
                             const candidates = [
                               extraction && typeof extraction === "object" ? extraction : null,
@@ -552,9 +633,31 @@ export default function Dashboard() {
 
                             // If extraction has nested fields wrapper, prefer that.
                             // Otherwise take extraction itself.
-                            if (extractionFields && typeof extractionFields === "object") return extractionFields;
-                            if (topFields && typeof topFields === "object") return topFields;
-                            if (extraction && typeof extraction === "object") return extraction;
+                            // Additionally, handle events like `extraction_retrieved` where
+                            // backend may send a full shape: { ..., extraction: { ...fields... } }
+                            // or { ..., extraction: { fields: { ... } } }.
+                            const pickFields = (obj: any) => {
+                              if (!obj || typeof obj !== "object") return undefined;
+
+                              // Common: { fields: { invoice_no: {...}, ... } }
+                              if (obj.fields && typeof obj.fields === "object") {
+                                return obj.fields;
+                              }
+
+                              // Already a fields map: { invoice_no: {...}, date: {...} }
+                              return obj;
+                            };
+
+                            if (extractionFields && typeof extractionFields === "object") {
+                              return extractionFields;
+                            }
+
+                            if (topFields && typeof topFields === "object") {
+                              return topFields;
+                            }
+
+                            const extracted = pickFields(extraction);
+                            if (extracted && typeof extracted === "object") return extracted;
 
                             return {};
                           })()
@@ -563,7 +666,7 @@ export default function Dashboard() {
 
 
                     ) : (
-                      <div className="empty-state selected-extraction-empty">
+                      <div className="empty-state selFected-extraction-empty">
                         <h3>Select an extraction event</h3>
                         <p>Click an activity item (for example, "extraction_completed") to view its extracted fields here.</p>
                       </div>

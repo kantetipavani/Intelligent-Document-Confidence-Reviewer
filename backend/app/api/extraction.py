@@ -8,7 +8,8 @@ from app.models.document import Document
 from app.models.extraction_run import ExtractionRun
 from app.models.user import User
 from app.services.extraction_service import run_extraction_and_prepare_review_version
-from app.tasks.extraction_tasks import run_extraction
+from app.kafka.producer import publish
+from app.kafka.topics import DOCUMENT_EVENTS
 
 
 router = APIRouter()
@@ -35,17 +36,21 @@ async def trigger_extraction(
     run = ExtractionRun(tenant_id=payload.tenant_id, document_id=payload.document_id, status="queued")
     await run.insert()
 
-    # Prefer Celery-based async execution (Redis broker/worker).
+    # Kafka event-driven execution (fault-tolerant + replayable).
+    # If Kafka is unavailable, fall back to in-process execution.
     try:
-        run_extraction.delay(
-            {
+        await publish(
+            topic=DOCUMENT_EVENTS,
+            event_type="extraction_requested",
+            payload={
                 "tenant_id": payload.tenant_id,
                 "document_id": payload.document_id,
                 "extraction_run_id": str(run.id),
-            }
+            },
+            tenant_id=payload.tenant_id,
+            request_app=None,
         )
     except Exception:
-        # Fallback to in-process background task if broker is unavailable.
         background_tasks.add_task(
             run_extraction_and_prepare_review_version,
             tenant_id=payload.tenant_id,
@@ -53,6 +58,6 @@ async def trigger_extraction(
             extraction_run_id=str(run.id),
         )
 
-
     return {"extraction_run_id": str(run.id), "status": "queued"}
+
 

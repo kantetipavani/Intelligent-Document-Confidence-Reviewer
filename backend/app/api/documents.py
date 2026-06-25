@@ -9,7 +9,7 @@ from app.core.security import get_current_user
 from app.models.document import Document
 from app.models.user import User
 from app.services.llm_service import ExtractionResult, extract_invoice_from_document_bytes
-
+from app.websocket.connection_manager import connection_manager
 router = APIRouter()
 
 # Cache key helper used by other modules (e.g. reviews) for dashboard invalidation.
@@ -70,7 +70,13 @@ async def upload_document(
             extraction=extraction,
         )
 
-    doc = Document(tenant_id=tenant_id, filename=filename, content_type=content_type, source_text=None)
+    # Persist the document immediately (metadata only for now).
+    doc = Document(
+        tenant_id=tenant_id,
+        filename=filename,
+        content_type=content_type,
+        source_text=None,
+    )
     await doc.insert()
 
     # Create an extraction run placeholder.
@@ -79,49 +85,81 @@ async def upload_document(
     run = ExtractionRun(
         tenant_id=tenant_id,
         document_id=str(doc.id),
-        status="queued",
+        status="running",
     )
     await run.insert()
 
-    # Publish job to in-process asyncio queue.
-    from app.queue.extraction_queue import ExtractionJob, publish_extraction_job
-
-    job = ExtractionJob(
-        tenant_id=tenant_id,
-        document_id=str(doc.id),
-        file_bytes=file_bytes,
-        filename=filename,
-    )
-    await publish_extraction_job(job)
-
-    # Audit: document uploaded / extraction enqueued
+    # IMPORTANT: UI requires extracted fields immediately after upload.
+    # So we run extraction synchronously here using the uploaded bytes.
+    # Kafka/review pipeline can still run later, but the dashboard won't fail.
     try:
-        from app.api.activity import record_event
+        extraction = await extract_invoice_from_document_bytes(
+            file_bytes=file_bytes,
+            content_type=content_type,
+            filename=filename,
+        )
 
-        await record_event(
-            event_type="document_uploaded",
-            user_email=current_user.email,
+        run.status = "completed"
+        # ExtractionRun.result is a dict; store plain dict for consistency.
+        run.result = extraction.model_dump()
+        run.error = None
+        await run.save()
+        
+        
+
+        # Also trigger review version creation through the existing service.
+        # This keeps versions/diffs consistent with async pipeline.
+        from app.services.extraction_service import create_review_version
+
+        await create_review_version(
             tenant_id=tenant_id,
+            document_id=str(doc.id),
+            extraction_run_id=str(run.id),
+            snapshot=run.result,
+            action="ai_pass",
+            reviewer_user_id=None,
+        )
+
+    except Exception as exc:
+        run.status = "failed"
+        run.error = str(exc)
+        await run.save()
+        raise HTTPException(status_code=502, detail=f"invoice extraction failed: {exc}") from exc
+
+    # Best-effort: still dispatch Kafka event so the background system stays in sync.
+    from app.kafka.producer import publish
+    from app.kafka.topics import DOCUMENT_EVENTS
+    # Note: trace propagation is best-effort; if tracing utilities aren't available, we still upload.
+    try:
+        # Optional function import kept local to avoid hard failure.
+        from app.core.tracing import inject_trace_into_headers  # type: ignore
+        trace_headers = inject_trace_into_headers()
+
+        await publish(
+            topic=DOCUMENT_EVENTS,
+            event_type="DOCUMENT_UPLOADED",
             payload={
                 "document_id": str(doc.id),
                 "filename": filename,
+                "content_type": content_type,
+                "extraction_run_id": str(run.id),
+                "tenant_id": tenant_id,
+                "user_email": current_user.email,
             },
+            tenant_id=tenant_id,
+            request_app=None,
+            headers=trace_headers,
         )
     except Exception:
+        # Ignore Kafka errors; synchronous extraction already completed.
         pass
+
 
     return DocumentCreateResponse(
         document_id=str(doc.id),
-        status="processing",
-        extraction=None,
+        status="extracted",
+        extraction=extraction,
     )
-
-
-
-
-
-
-
 
 @router.get("/{tenant_id}/{document_id}")
 async def get_document(

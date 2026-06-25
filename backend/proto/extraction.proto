@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package indcr.extraction.v1;
+
+option go_package = "indcr/extraction/v1;extractionv1";
+
+service ExtractionService {
+  // One-shot request/response.
+  rpc Extract(ExtractRequest) returns (ExtractResponse);
+
+  // Stream back status updates while extraction is running.
+  rpc ExtractWithStatus(ExtractRequest) returns (stream ExtractStatus);
+}
+
+message ExtractRequest {
+  string tenant_id = 1;
+  string document_id = 2;
+  string extraction_run_id = 3;
+
+  // Metadata only; server reads the document bytes/source from Mongo.
+  string filename = 4;
+  string content_type = 5;
+}
+
+message ExtractResponse {
+  string extraction_run_id = 1;
+  string status = 2; // completed|failed
+  map<string, Field> result_fields = 3;
+}
+
+message ExtractStatus {
+  string extraction_run_id = 1;
+  string phase = 2; // queued|running|completed|failed
+
+  // Optional: can be used by clients for progress rendering.
+  string error = 3;
+  map<string, Field> result_fields = 4;
+}
+
+// Flattened field representation that matches the frontend's shape:
+// { value: string, confidence: double }
+message Field {
+  string value = 1;
+  double confidence = 2;
+}
+

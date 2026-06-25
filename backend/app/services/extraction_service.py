@@ -342,8 +342,14 @@ async def run_extraction_and_prepare_review_version(
     if not run or not doc or doc.tenant_id != tenant_id:
         return
 
+    # Idempotency guard for Kafka replay (at-least-once delivery).
+    # If this extraction_run_id was already completed, do nothing.
+    if run.status == "completed" and run.result is not None:
+        return
+
     run.status = "running"
     await run.save()
+
 
     try:
         # Extract text from provided bytes for TXT/PDF/DOC/DOCX.

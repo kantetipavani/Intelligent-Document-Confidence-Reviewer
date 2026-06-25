@@ -1,6 +1,6 @@
 import React from "react";
 import ExtractedFields from "./ExtractedFields";
-
+import { useEffect } from "react";
 type ActivityEvent = {
   event_type: string;
   created_at: string;
