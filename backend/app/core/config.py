@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     mongodb_db: str = "idc_dev"
     skip_db: bool = False
 
-    jwt_secret: str = "jr2gyHC9YU-P_KRQGOScNxxBtle1ECwl7rJ8-4np3ZE"
+    jwt_secret: str = "your_secret_key_here"
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 60
 
