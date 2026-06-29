@@ -183,7 +183,7 @@ export default function Dashboard() {
     <Layout>
       <div className="dashboard-wrapper">
         {/* SIDEBAR */}
-        <aside className="sidebar">
+        <aside className="sidebar" aria-label="Sidebar navigation">
           <div className="logo-section">
             <div className="logo-circle">AI</div>
             <div>
@@ -302,9 +302,32 @@ export default function Dashboard() {
                             {formatActivityDate(ev.created_at)}
                           </span>
                         </div>
-                        <pre className="activity-payload">
-                          {JSON.stringify(ev.payload, null, 2)}
-                        </pre>
+                        <div className="activity-payload-card">
+                          <div className="activity-payload-header">
+                            <span>Payload</span>
+                            <span className="activity-payload-subtle">JSON</span>
+                          </div>
+                          <pre className="activity-payload">{
+                            (() => {
+                              const p = ev?.payload ?? {};
+
+                              // Promote stack->extraction for consistent output
+                              const stack = (p as any)?.stack ?? (p as any)?.data?.stack;
+                              if (stack && typeof stack === "object") {
+                                if ((stack as any)?.extracted) {
+                                  return JSON.stringify({ extraction: (stack as any).extracted }, null, 2);
+                                }
+                                if ((stack as any)?.fields) {
+                                  return JSON.stringify({ extraction: (stack as any).fields }, null, 2);
+                                }
+                                return JSON.stringify({ extraction: stack }, null, 2);
+                              }
+
+                              // If payload already has `extraction`, keep it as-is
+                              return JSON.stringify(p, null, 2);
+                            })()
+                          }</pre>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -321,75 +344,163 @@ export default function Dashboard() {
               </div>
 
               <div className="review-panel">
-                <div className="review-header">
-                  <h2>Extracted Fields</h2>
-                </div>
+                
 
                 <div className="extraction-panel">
                   {selectedActivityIndex !== null ? (
-                    <ExtractedFields
-                      fields={
-                        (() => {
-                          const ev = activityData[selectedActivityIndex];
-                          const payload = ev?.payload;
+                    (() => {
+                      const ev = activityData[selectedActivityIndex];
+                      const payload = ev?.payload;
 
-                          const safeParseJSON = (v: any) => {
-                            if (typeof v !== "string") return v;
-                            try {
-                              return JSON.parse(v);
-                            } catch {
-                              return v;
-                            }
-                          };
+                      const safeParseJSON = (v: any) => {
+                        if (typeof v !== "string") return v;
+                        try {
+                          return JSON.parse(v);
+                        } catch {
+                          return v;
+                        }
+                      };
 
-                          const normalizedPayload = safeParseJSON(payload);
+                      const normalizedPayload = safeParseJSON(payload);
 
-                          const extraction = safeParseJSON(
-                            (normalizedPayload as any)?.extraction,
-                          );
-                          const extractionFields =
-                            extraction && typeof extraction === "object"
-                              ? (extraction as any)?.fields
-                              : undefined;
+                      // Try multiple common shapes used by backends.
+                      const candidates = [
+                        // direct
+                        (normalizedPayload as any)?.extraction,
+                        (normalizedPayload as any)?.fields,
+                        (normalizedPayload as any)?.result,
+                        // nested under `data`
+                        (normalizedPayload as any)?.data?.extraction,
+                        (normalizedPayload as any)?.data?.fields,
+                        (normalizedPayload as any)?.data?.result,
+                        // sometimes the whole payload is the extracted output
+                        normalizedPayload,
+                      ];
 
-                          const topFields = safeParseJSON(
-                            (normalizedPayload as any)?.fields,
-                          );
+                      const parsedCandidates = candidates.map((c) => safeParseJSON(c));
 
-                          const candidates = [
-                            extraction && typeof extraction === "object" ? extraction : null,
-                            extractionFields && typeof extractionFields === "object"
-                              ? extractionFields
-                              : null,
-                            topFields && typeof topFields === "object" ? topFields : null,
-                          ].filter(Boolean);
+                      // Prefer objects containing `fields`.
+                      // Detect common "stack" formatted payloads.
+                      // Supported examples (tolerant):
+                      // - { stack: { extracted: { ...fields } } }
+                      // - { stack: { fields: { ...fields } } }
+                      // - { stack: { ...fields } }
+                      // - { data: { stack: ... } } (handled via parsedCandidates already)
+                      const findStackFields = (root: any) => {
+                        if (!root || typeof root !== "object") return undefined;
+                        const stack = (root as any).stack ?? (root as any)?.data?.stack;
+                        if (!stack || typeof stack !== "object") return undefined;
 
-                          const pickFields = (obj: any) => {
-                            if (!obj || typeof obj !== "object") return undefined;
-                            if (obj.fields && typeof obj.fields === "object") {
-                              return obj.fields;
-                            }
-                            return obj;
-                          };
+                        // { stack: { extracted: {...} } }
+                        if (stack?.extracted && typeof stack.extracted === "object") {
+                          return stack.extracted;
+                        }
 
-                          if (extractionFields && typeof extractionFields === "object") {
-                            return extractionFields;
+                        // { stack: { fields: {...} } }
+                        if (stack?.fields && typeof stack.fields === "object") {
+                          return stack.fields;
+                        }
+
+                        // { stack: { ...fields } }
+                        // Sometimes stack itself is the fields object.
+                        return stack;
+                      };
+
+                      // Prefer extracted fields coming from stack, otherwise fallback to existing shapes.
+                      const stackFieldsFromAnyCandidate = parsedCandidates
+                        .map((c) => findStackFields(c))
+                        .find((v) => v && typeof v === "object");
+
+                      const extractionObject =
+                        (stackFieldsFromAnyCandidate ??
+                          (parsedCandidates.find(
+                            (c) =>
+                              c && typeof c === "object" && (c as any).fields && typeof (c as any).fields === "object",
+                          ) ??
+                            parsedCandidates.find((c) => c && typeof c === "object") ??
+                            {})) as any;
+
+                      const extractedFieldsRaw =
+                        extractionObject?.fields && typeof extractionObject.fields === "object"
+                          ? extractionObject.fields
+                          : extractionObject;
+
+                      // Normalize backend shapes to what <ExtractedFields /> expects:
+                      // - it looks for keys like: invoice_no|invoice_number, vendor_name|vendor, amount|invoice_total,
+                      //   date, gstin, status.
+                      // - values should be either a string OR { value, confidence }.
+                      const normalizeToExtractedFields = (input: any) => {
+                        if (!input || typeof input !== "object") return {};
+
+                        // Also map common nested structure: { "INVOICE NO": {value, confidence}, ... }
+                        // and { "INVOICE NO": { "value": ".." } } into the { value, confidence } format.
+
+
+                        // If backend already returns internal keys, keep them.
+                        const output: Record<string, any> = { ...input };
+
+                        const wrapIfNeeded = (v: any) => {
+                          if (v && typeof v === "object") return v;
+                          return { value: v ?? "", confidence: 0 };
+                        };
+
+                        const labelMap: Record<string, string> = {
+                          "INVOICE NO": "invoice_no",
+                          "INVOICE_NUMBER": "invoice_no",
+                          "INVOICE NO ": "invoice_no",
+                          "INVOICE": "invoice_no",
+                          "VENDOR": "vendor",
+                          "AMOUNT": "amount",
+                          "DATE": "date",
+                          "GSTIN": "gstin",
+                          "STATUS": "status",
+                        };
+
+                        // Convert label-style keys into internal keys (and wrap values if needed).
+                        for (const [labelKey, internalKey] of Object.entries(labelMap)) {
+                          // direct match
+                          if (Object.prototype.hasOwnProperty.call(input, labelKey)) {
+                            const v = input[labelKey];
+                            output[internalKey] = wrapIfNeeded(v);
+                            continue;
                           }
-                          if (topFields && typeof topFields === "object") {
-                            return topFields;
+
+                          // tolerant match: trim + case-insensitive
+                          const match = Object.keys(input).find(
+                            (k) => k?.trim?.()?.toUpperCase?.() === labelKey.trim().toUpperCase(),
+                          );
+                          if (match) {
+                            const v = input[match];
+                            output[internalKey] = wrapIfNeeded(v);
                           }
-                          const extracted = pickFields(extraction);
-                          if (extracted && typeof extracted === "object") return extracted;
-                          return {};
-                        })()
-                      }
-                    />
+                        }
+
+                        return output;
+                      };
+
+                      const extractedFields = normalizeToExtractedFields(extractedFieldsRaw);
+
+                      const extractedJson = {
+                        event_type: ev?.event_type ?? null,
+                        created_at: ev?.created_at ?? null,
+                        extracted: extractedFieldsRaw ?? {},
+                      };
+
+                      return (
+                        <>
+                          {/* Left panel only: keep extracted JSON/fields within the left activity panel (no right-side JSON). */}
+                          <div className="fields-section">
+                            <h3 className="fields-title">Extracted Fields</h3>
+                            <ExtractedFields fields={extractedFields ?? {}} />
+                          </div>
+                        </>
+                      );
+                    })()
                   ) : (
                     <div className="empty-state selFected-extraction-empty">
                       <h3>Select an extraction event</h3>
                       <p>
-                        Click an activity item (for example, "extraction_completed") to
-                        view its extracted fields here.
+                        Click an activity item (for example, "extraction_completed") to view its extracted JSON and fields.
                       </p>
                     </div>
                   )}
@@ -721,6 +832,105 @@ export default function Dashboard() {
           .empty-icon {
             font-size: 70px;
           }
+
+          .activity-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+          }
+
+          .activity-item {
+            border: 1px solid #e5e7eb;
+            background: #fff;
+            border-radius: 14px;
+            padding: 14px;
+            cursor: pointer;
+            transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+          }
+
+          .activity-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 26px rgba(0, 0, 0, 0.06);
+            border-color: #d1d5db;
+          }
+
+          .activity-item.selected {
+            border-color: rgba(99, 102, 241, 0.8);
+            box-shadow: 0 12px 26px rgba(99, 102, 241, 0.14);
+          }
+
+          .activity-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+          }
+
+          .activity-type {
+            font-weight: 800;
+            color: #111827;
+            font-size: 13px;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+          }
+
+          .activity-date {
+            color: rgba(17, 24, 39, 0.7);
+            font-size: 12.5px;
+            font-weight: 600;
+          }
+
+          .activity-payload-card {
+            background: rgba(15, 23, 42, 0.03);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            border-radius: 14px;
+            padding: 12px;
+          }
+
+          .activity-payload-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding: 0 4px;
+          }
+
+          .activity-payload-header > span:first-child {
+            font-weight: 800;
+            font-size: 12.5px;
+            color: #111827;
+          }
+
+          .activity-payload-subtle {
+            font-weight: 800;
+            font-size: 11px;
+            letter-spacing: 0.04em;
+            color: rgba(17, 24, 39, 0.65);
+            background: rgba(99, 102, 241, 0.12);
+            padding: 6px 10px;
+            border-radius: 999px;
+          }
+
+          .activity-payload {
+            margin: 0;
+            padding: 12px;
+            border-radius: 12px;
+            background: #0b1220;
+            color: #e5e7eb;
+            font-size: 12.5px;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-word;
+            overflow: auto;
+            max-height: 240px;
+            border: 1px solid rgba(148, 163, 184, 0.16);
+          }
+
+          .activity-payload::selection {
+            background: rgba(99, 102, 241, 0.45);
+          }
+
           @media (max-width: 1000px) {
             .dashboard-wrapper {
               flex-direction: column;

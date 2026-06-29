@@ -1,7 +1,8 @@
-- [ ] Update backend/requirements.txt to pin bcrypt to a stable version
-- [ ] Add fallback logic in backend/app/core/security.py so login/register doesn’t crash if passlib bcrypt backend can’t load
-- [ ] Create/refresh backend .venv and reinstall dependencies
-- [ ] Run a minimal bcrypt/passlib verification script inside backend .venv
-- [ ] Run backend tests (or at least import/app startup smoke test)
-- [ ] Re-test the endpoint(s) that trigger the bcrypt error
+# TODO - Stack format in Account & Activity
+
+- [ ] Inspect existing Account & Activity rendering logic (dashboard.tsx) to see how payload is normalized.
+- [ ] Implement "stack" formatted storage so that when data is retrieved in "invoice reviewer", the JSON data is present at the start of the top head of "Account & Activity".
+- [ ] Add/adjust normalization logic to prefer stack-shaped payloads.
+- [ ] Ensure no regressions: reviewer page and info page still render correctly.
+- [ ] Run frontend tests/build (if available) or TypeScript check.
 
