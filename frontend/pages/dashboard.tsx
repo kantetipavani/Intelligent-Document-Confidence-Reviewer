@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { useQuery } from "@tanstack/react-query";
@@ -7,7 +7,7 @@ import Layout from "../components/layout";
 import api from "../services/api";
 
 import ExtractedFields from "../components/ExtractedFields";
-
+import { useExtractionFieldsFromWebSocket } from "../hooks/useExtractionFieldsFromWebSocket";
 
 export default function Dashboard() {
 
@@ -68,22 +68,47 @@ export default function Dashboard() {
 
   /* OCR EXTRACTION */
 
-  const handleExtract = async () => {
+  const [documentIdForWs, setDocumentIdForWs] = useState<string | null>(null);
 
-    if (!selectedFile) {
+  const tokenFromStorage = token;
 
-      alert(
-        "Please upload PDF / DOC / TXT file"
-      );
+  const {
+    connected: wsConnected,
+    fields: wsFields,
+    isReady: wsReady,
+    error: wsError,
+  } = useExtractionFieldsFromWebSocket({
+    documentId: documentIdForWs,
+    token: tokenFromStorage,
+    enabled: !!documentIdForWs,
+  });
 
+  useEffect(() => {
+    if (wsError) {
+      alert(`WebSocket error: ${wsError}`);
+      setLoading(false);
       return;
-
     }
 
+    if (wsReady && wsFields.length) {
+      setFields(wsFields);
+      setIsExtracted(true);
+      setLoading(false);
+    }
+  }, [wsReady, wsFields, wsError]);
+
+  const handleExtract = async () => {
+    if (!selectedFile) {
+      alert("Please upload PDF / DOC / TXT file");
+      return;
+    }
+
+    setIsExtracted(false);
+    setFields([]);
+    setLoading(true);
+    setDocumentIdForWs(null);
+
     try {
-
-      setLoading(true);
-
       const formData = new FormData();
 
       // Backend requires tenant_id and filename as form fields.
@@ -92,139 +117,28 @@ export default function Dashboard() {
       if (userEmail) {
         formData.append("user_email", userEmail);
       }
-      formData.append(
-        "file",
-        selectedFile
+      formData.append("file", selectedFile);
+
+      const response = await api.post(
+        "/documents/upload",
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
       );
 
-      const response =
-        await api.post(
-          "/documents/upload",
-          formData,
+      const documentId = response.data?.document_id ?? null;
+      setDocumentIdForWs(documentId);
 
-          {
-            headers: {
-              "Content-Type":
-                "multipart/form-data",
-            },
-          }
-        );
-
-      const documentId = response.data.document_id;
-
-      // WebSocket-first: backend sends `document_status` with `extraction` when ready.
-      // If backend already returned extraction synchronously, we can render it.
-      let extraction: any = response.data?.extraction;
-
-      if (!extraction && documentId) {
-        extraction = await new Promise<any>((resolve, reject) => {
-          if (typeof window === "undefined") {
-            reject(new Error("WebSocket unavailable in SSR"));
-            return;
-          }
-
-          const token = localStorage.getItem("token") || "";
-          const apiUrl = api.defaults.baseURL || "http://127.0.0.1:8000";
-          const wsBase = apiUrl.replace(/^http/, "ws");
-          const wsProtocol = wsBase.startsWith("wss") ? "wss" : "ws";
-          const wsUrl = `${wsProtocol}://${wsBase.split("://")[1]}/ws/documents/${documentId}?token=${encodeURIComponent(token || "")}`;
-
-          let ws: WebSocket | null = null;
-          let settled = false;
-
-          const timeout = window.setTimeout(() => {
-            if (ws) ws.close();
-            if (!settled) {
-              settled = true;
-              reject(new Error("Timed out waiting for extraction"));
-            }
-          }, 60_000);
-
-          ws = new WebSocket(wsUrl);
-
-          ws.onmessage = (ev) => {
-            try {
-              const msg = JSON.parse(ev.data);
-              const statusVal = msg?.status;
-              const extractionPayload = msg?.extraction;
-              const isComplete =
-                statusVal === "ready" ||
-                statusVal === "COMPLETE" ||
-                msg?.event === "EXTRACTION_COMPLETE";
-
-              if (extractionPayload && isComplete) {
-                settled = true;
-                window.clearTimeout(timeout);
-                resolve(extractionPayload);
-                ws?.close();
-              }
-            } catch {
-              // ignore parse errors
-            }
-          };
-
-          ws.onerror = (err) => {
-            if (!settled) {
-              settled = true;
-              window.clearTimeout(timeout);
-              reject(err);
-            }
-          };
-        });
+      // If backend returned extraction synchronously, wsReady will likely still resolve,
+      // but we intentionally keep WS as the single source of truth for completion.
+      // (No inline polling/promise here.)
+      if (!documentId) {
+        throw new Error("document_id missing from upload response");
       }
-
-      if (!extraction) {
-        throw new Error("Extraction result not available");
-      }
-
-      const fieldsObj =
-        extraction?.fields &&
-        typeof extraction.fields === "object"
-          ? extraction.fields
-          : extraction || {};
-
-
-      // Canonical keys produced by the backend UI schema:
-      // invoice_no, date, gstin, vendor, amount, status
-      const canonicalOrder = [
-        "invoice_no",
-        "vendor",
-        "amount",
-        "date",
-        "gstin",
-        "status",
-      ];
-
-      const legacyAliases: Record<string, string> = {
-        invoice_number: "invoice_no",
-        vendor_name: "vendor",
-        invoice_total: "amount",
-      };
-
-      const getField = (key: string) => {
-        const direct = (fieldsObj as any)?.[key];
-        if (direct) return direct;
-
-        // legacy support (if backend or old snapshot uses older keys)
-        const mapped = legacyAliases[key];
-        if (mapped) return (fieldsObj as any)?.[mapped];
-
-        return undefined;
-      };
-
-      const extractedFields = canonicalOrder.map((key) => {
-        const f = getField(key) as any;
-        return {
-          name: key.replace(/_/g, " ").toUpperCase(),
-          value: f?.value ?? "",
-          confidence: f?.confidence ?? 0,
-        };
-      });
-
-      setFields(extractedFields);
-      setIsExtracted(true);
     } catch (error) {
-
       console.error("OCR Extraction Failed:", error);
 
       const status = (error as any)?.response?.status;
@@ -240,14 +154,10 @@ export default function Dashboard() {
         `OCR Extraction Failed${status ? ` (HTTP ${status})` : ""}${msg ? `: ${msg}` : ""}`
       );
 
-    } finally {
-
-
       setLoading(false);
-
     }
-
   };
+
 
   const handleLogout = async () => {
     const email =

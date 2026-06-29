@@ -529,6 +529,37 @@ docker-compose logs -f
 
 ---
 
+## Sprint 5 Standard: Kafka + Jaeger + Load Tests
+
+### Start Kafka + Jaeger (local)
+
+```bash
+docker compose up -d --build
+```
+
+- **Jaeger UI**: http://localhost:16686
+- **Kafka UI**: http://localhost:8080
+
+### Verify Kafka topics and consumer lag
+
+Follow: `./kafka-verification.md`
+
+### Run load tests (Locust)
+
+```bash
+# from repo root
+locust -f locustfile.py --headless -u 50 -r 5 -t 60s
+```
+
+Locust outputs are written under:
+- `results/baseline/*`
+- `results/with_redis/*`
+
+Summaries/threshold notes: `load-test-report.md`
+
+---
+
 "# Intelligant_Document" 
 "# Intelligant_Document" 
 "# Intelligant_Document" 
+
