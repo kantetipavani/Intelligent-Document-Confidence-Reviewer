@@ -37,5 +37,84 @@ export function useExtractionWebSocket({
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
+    if (!enabled || !documentId) return;
 
+    const apiBaseURL =
+      process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
+    const wsBase = httpToWsUrl(apiBaseURL);
+    const wsUrl = `${wsBase}/ws/documents/${documentId}?token=${encodeURIComponent(
+      token || "",
+    )}`;
+
+    setConnected(false);
+    setExtraction(null);
+    setError(null);
+
+    let settled = false;
+
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setConnected(true);
+    };
+
+    ws.onmessage = (ev) => {
+      try {
+        const msg: ExtractionMessage = JSON.parse(ev.data);
+
+        const statusVal = msg?.status;
+        const extractionPayload = msg?.extraction;
+
+        const isComplete =
+          statusVal === "ready" ||
+          statusVal === "completed" ||
+          statusVal === "COMPLETE" ||
+          msg?.event === "EXTRACTION_COMPLETE";
+
+        // Most common: { status, extraction }
+        if (extractionPayload && (isComplete || statusVal)) {
+          if (settled) return;
+          settled = true;
+          setExtraction(extractionPayload);
+          ws.close();
+          return;
+        }
+
+        // Fallback: some servers may wrap extraction differently
+        if (isComplete && msg && (msg as any)?.result) {
+          if (settled) return;
+          settled = true;
+          setExtraction((msg as any).result);
+          ws.close();
+        }
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    ws.onerror = () => {
+      if (!settled) {
+        setError("WebSocket error");
+      }
+    };
+
+    ws.onclose = () => {
+      setConnected(false);
+    };
+
+    return () => {
+      settled = true;
+      try {
+        ws.close();
+      } catch {
+        // ignore
+      }
+      wsRef.current = null;
+    };
+  }, [documentId, token, enabled]);
+
+  return { connected, extraction, error };
+}
 
