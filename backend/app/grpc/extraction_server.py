@@ -10,9 +10,7 @@ from opentelemetry import trace as ot_trace
 
 from app.models.extraction_run import ExtractionRun
 from app.services.extraction_service import run_extraction_and_prepare_review_version
-from app.services.llm_service import extract_invoice_from_document_bytes
-from app.models.document import Document
-from app.services.version_service import create_review_version
+
 
 from app.grpc.generated.extraction_pb2 import ExtractRequest, ExtractResponse, ExtractStatus
 from app.grpc.generated.extraction_pb2_grpc import ExtractionServiceServicer
@@ -21,12 +19,44 @@ logger = logging.getLogger(__name__)
 
 
 def _fields_map_from_result(result: dict[str, Any]) -> dict[str, Any]:
-    fields = (result or {}).get("fields") or {}
+    """Convert backend result dict into proto `map<string, Field>` shape.
+
+    Proto expects:
+      Field { value: string, confidence: double }
+
+    Backend stores either:
+      { "fields": { key: {value, confidence}, ... } }
+    or (legacy) already-flattened field dicts.
+    """
+
+    if not result:
+        return {}
+
+    fields_obj: Any = result.get("fields") if isinstance(result, dict) else None
+    if not isinstance(fields_obj, dict):
+        fields_obj = {}
+
     out: dict[str, Any] = {}
-    for k, v in fields.items():
-        if isinstance(v, dict):
-            out[k] = {"value": str(v.get("value") or ""), "confidence": float(v.get("confidence") or 0.0)}
+
+    for key, v in fields_obj.items():
+        if not isinstance(v, dict):
+            continue
+
+        val = v.get("value")
+        conf = v.get("confidence")
+
+        try:
+            conf_f = float(conf) if conf is not None else 0.0
+        except Exception:
+            conf_f = 0.0
+
+        out[str(key)] = {
+            "value": "" if val is None else str(val),
+            "confidence": max(0.0, min(1.0, conf_f)),
+        }
+
     return out
+
 
 
 class ExtractionServiceImpl(ExtractionServiceServicer):

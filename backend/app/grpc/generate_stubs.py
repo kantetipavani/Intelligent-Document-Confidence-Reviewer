@@ -7,9 +7,14 @@ import sys
 
 
 def main() -> None:
-    repo_root = pathlib.Path(__file__).resolve().parents[2]
-    proto_dir = repo_root / "proto"
+    # Layout:
+    #   backend/proto/extraction.proto
+    #   backend/app/grpc/generate_stubs.py
+    backend_root = pathlib.Path(__file__).resolve().parents[3]  # .../backend
+    proto_dir = backend_root / "proto"
+
     out_dir = pathlib.Path(__file__).resolve().parent / "generated"
+
 
     out_dir.mkdir(parents=True, exist_ok=True)
 

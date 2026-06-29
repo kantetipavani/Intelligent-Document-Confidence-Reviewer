@@ -163,10 +163,10 @@ def require_role(*roles: str) -> Callable[[User], Any]:
 def validate_ws_token(token: str):
     try:
         payload = jwt.decode(
-            token,
-            SECRET_KEY,
-            algorithms=[ALGORITHM]
-        )
+    token,
+    settings.jwt_secret,
+    algorithms=[settings.jwt_algorithm],
+)
 
         return payload
 

@@ -111,10 +111,11 @@ export default function Dashboard() {
         );
 
       const documentId = response.data.document_id;
+
+      // WebSocket-first: backend sends `document_status` with `extraction` when ready.
+      // If backend already returned extraction synchronously, we can render it.
       let extraction: any = response.data?.extraction;
 
-      // Prefer server push via WebSocket.
-      // Backend will send the extraction the moment Kafka consumer completes.
       if (!extraction && documentId) {
         extraction = await new Promise<any>((resolve, reject) => {
           if (typeof window === "undefined") {
@@ -122,14 +123,11 @@ export default function Dashboard() {
             return;
           }
 
-      const token = localStorage.getItem("token") || "";
+          const token = localStorage.getItem("token") || "";
           const apiUrl = api.defaults.baseURL || "http://127.0.0.1:8000";
-
-          // Convert http(s)://host to ws(s)://host
           const wsBase = apiUrl.replace(/^http/, "ws");
           const wsProtocol = wsBase.startsWith("wss") ? "wss" : "ws";
           const wsUrl = `${wsProtocol}://${wsBase.split("://")[1]}/ws/documents/${documentId}?token=${encodeURIComponent(token || "")}`;
-
 
           let ws: WebSocket | null = null;
           let settled = false;
@@ -142,41 +140,22 @@ export default function Dashboard() {
             }
           }, 60_000);
 
-          try {
-            ws = new WebSocket(wsUrl);
-          } catch (e) {
-            window.clearTimeout(timeout);
-            reject(e);
-            return;
-          }
-
-          ws.onopen = () => {
-            // If backend expects Authorization header during WS handshake,
-            // this project currently does not forward it automatically.
-            // Best-effort: some deployments may accept unauthenticated WS.
-            // The backend will still attempt get_current_user.
-          };
+          ws = new WebSocket(wsUrl);
 
           ws.onmessage = (ev) => {
             try {
               const msg = JSON.parse(ev.data);
-              // Backend WS envelope:
-              // - { type: "document_status", status: "ready", extraction: {...} }
-              // - or { event: "EXTRACTION_COMPLETE", status: "COMPLETE", extraction: {...} }
               const statusVal = msg?.status;
               const extractionPayload = msg?.extraction;
-
               const isComplete =
                 statusVal === "ready" ||
                 statusVal === "COMPLETE" ||
                 msg?.event === "EXTRACTION_COMPLETE";
 
-              if (isComplete || extractionPayload) {
-                // Prefer extracted extraction map when present.
-                if (extractionPayload) resolve(extractionPayload);
-                else resolve(msg);
+              if (extractionPayload && isComplete) {
                 settled = true;
                 window.clearTimeout(timeout);
+                resolve(extractionPayload);
                 ws?.close();
               }
             } catch {
@@ -191,10 +170,6 @@ export default function Dashboard() {
               reject(err);
             }
           };
-
-          ws.onclose = () => {
-            // If we close before receiving 'ready', allow timeout handler to trigger.
-          };
         });
       }
 
@@ -202,15 +177,12 @@ export default function Dashboard() {
         throw new Error("Extraction result not available");
       }
 
-
-      // extraction can be either:
-      // - { fields: {...} } (old)
-      // - { invoice_no: {...}, ... } (current versions/latest returns fields directly)
       const fieldsObj =
         extraction?.fields &&
         typeof extraction.fields === "object"
           ? extraction.fields
           : extraction || {};
+
 
       // Canonical keys produced by the backend UI schema:
       // invoice_no, date, gstin, vendor, amount, status
@@ -474,12 +446,16 @@ export default function Dashboard() {
 
                   
 
-                    <button
+          <button
                       className="logout-btn"
                       onClick={handleLogout}
+                      title="Logout"
+                      aria-label="Logout"
                     >
                       Logout
                     </button>
+
+
 
                 </div>
 
