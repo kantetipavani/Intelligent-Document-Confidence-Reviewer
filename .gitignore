@@ -27,3 +27,8 @@ htmlcov/
 # Tests
 .pytest_cache/
 
+# Virtual environments (tracked previously)
+.venv/
+.venv-locust/
+.venv-locust312/
+

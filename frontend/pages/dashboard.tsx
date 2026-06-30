@@ -309,21 +309,44 @@ export default function Dashboard() {
                           </div>
                           <pre className="activity-payload">{
                             (() => {
-                              const p = ev?.payload ?? {};
+                              const rawPayload = ev?.payload;
 
-                              // Promote stack->extraction for consistent output
-                              const stack = (p as any)?.stack ?? (p as any)?.data?.stack;
+                              const safeParseJSON = (v: any) => {
+                                if (typeof v !== "string") return v;
+                                try {
+                                  return JSON.parse(v);
+                                } catch {
+                                  return v;
+                                }
+                              };
+
+                              const p = safeParseJSON(rawPayload ?? {});
+
+                              // If backend stores extraction in stack format,
+                              // promote it so activity preview matches the extraction object.
+                              const stack = p?.stack ?? p?.data?.stack;
                               if (stack && typeof stack === "object") {
-                                if ((stack as any)?.extracted) {
-                                  return JSON.stringify({ extraction: (stack as any).extracted }, null, 2);
+                                if (stack?.extracted && typeof stack.extracted === "object") {
+                                  return JSON.stringify(
+                                    { ...p, extraction: stack.extracted },
+                                    null,
+                                    2,
+                                  );
                                 }
-                                if ((stack as any)?.fields) {
-                                  return JSON.stringify({ extraction: (stack as any).fields }, null, 2);
+                                if (stack?.fields && typeof stack.fields === "object") {
+                                  return JSON.stringify(
+                                    { ...p, extraction: stack.fields },
+                                    null,
+                                    2,
+                                  );
                                 }
-                                return JSON.stringify({ extraction: stack }, null, 2);
+                                return JSON.stringify(
+                                  { ...p, extraction: stack },
+                                  null,
+                                  2,
+                                );
                               }
 
-                              // If payload already has `extraction`, keep it as-is
                               return JSON.stringify(p, null, 2);
                             })()
                           }</pre>
@@ -420,10 +443,35 @@ export default function Dashboard() {
                             parsedCandidates.find((c) => c && typeof c === "object") ??
                             {})) as any;
 
-                      const extractedFieldsRaw =
-                        extractionObject?.fields && typeof extractionObject.fields === "object"
-                          ? extractionObject.fields
-                          : extractionObject;
+                      // Requirement: support payload shape like:
+                      // {
+                      //   document_id, version_number, action,
+                      //   extraction: { invoice_no: {value, confidence}, ... }
+                      // }
+                      // and also stack-formatted variants.
+                      const extractedFieldsRaw = (() => {
+                        if (!extractionObject || typeof extractionObject !== "object") return {};
+
+                        // If payload is already extraction-like: { extraction: { ...fields } }
+                        if (
+                          Object.prototype.hasOwnProperty.call(extractionObject, "extraction")
+                        ) {
+                          const maybe = (extractionObject as any).extraction;
+                          return maybe && typeof maybe === "object" ? maybe : {};
+                        }
+
+                        // If payload is stack-promoted: { fields: { ...fields } } or { stack: ... }
+                        if (
+                          (extractionObject as any)?.fields &&
+                          typeof (extractionObject as any).fields === "object"
+                        ) {
+                          return (extractionObject as any).fields;
+                        }
+
+                        // If extractionObject itself is the fields map
+                        return extractionObject;
+                      })();
+
 
                       // Normalize backend shapes to what <ExtractedFields /> expects:
                       // - it looks for keys like: invoice_no|invoice_number, vendor_name|vendor, amount|invoice_total,
@@ -491,6 +539,7 @@ export default function Dashboard() {
                           {/* Left panel only: keep extracted JSON/fields within the left activity panel (no right-side JSON). */}
                           <div className="fields-section">
                             <h3 className="fields-title">Extracted Fields</h3>
+                            
                             <ExtractedFields fields={extractedFields ?? {}} />
                           </div>
                         </>
