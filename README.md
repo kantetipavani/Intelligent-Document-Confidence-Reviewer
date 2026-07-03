@@ -529,7 +529,7 @@ docker-compose logs -f
 
 ---
 
-## Sprint 5 Standard: Kafka + Jaeger + Load Tests
+## Kafka + Jaeger + Load Tests
 
 ### Start Kafka + Jaeger (local)
 
@@ -559,7 +559,4 @@ Summaries/threshold notes: `load-test-report.md`
 
 ---
 
-"# Intelligant_Document" 
-"# Intelligant_Document" 
-"# Intelligant_Document" 
 
