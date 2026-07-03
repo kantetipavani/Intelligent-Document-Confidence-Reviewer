@@ -20,12 +20,19 @@ class ExtractionTrigger(BaseModel):
     document_id: str
 
 
+from app.core.rate_limiter import tenant_rate_limit_dependency
+
+
 @router.post("/trigger")
 async def trigger_extraction(
     payload: ExtractionTrigger,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
+    _rate_limited: None = Depends(
+        tenant_rate_limit_dependency(endpoint_key="trigger", current_user_dep=get_current_user)
+    ),
 ):
+
     if payload.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant mismatch")
 

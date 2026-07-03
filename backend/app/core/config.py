@@ -30,8 +30,24 @@ class Settings(BaseSettings):
     # This prevents failures in environments without LLM credits/network.
     skip_llm: bool = False
 
+    # ----------------------------
+    # Tenant-aware rate limiting
+    # ----------------------------
+    # Fixed-window limiter (simple + predictable). Keyed by tenant_id + endpoint.
+    rate_limit_window_seconds: int = 60
+
+    # Default limits per tenant (requests per window)
+    rate_limit_upload_default: int = 10
+    rate_limit_trigger_default: int = 10
+
+    # Optional overrides as JSON mapping tenant_id -> {"upload": int, "trigger": int}
+    # Example:
+    #   {"tenantA": {"upload": 2, "trigger": 1}, "tenantB": {"upload": 20}}
+    rate_limit_overrides_json: str = ""
+
 
 
 
 settings = Settings()
+
 

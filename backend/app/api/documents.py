@@ -10,7 +10,14 @@ from app.models.document import Document
 from app.models.user import User
 from app.services.llm_service import ExtractionResult, extract_invoice_from_document_bytes
 from app.websocket.connection_manager import connection_manager
+from app.core.rate_limiter import enforce_tenant_rate_limit, tenant_rate_limit_dependency
+
+
+
+
+
 router = APIRouter()
+
 
 # Cache key helper used by other modules (e.g. reviews) for dashboard invalidation.
 # Keeping it here avoids import-time failures.
@@ -27,10 +34,17 @@ class DocumentCreateResponse(BaseModel):
 
 @router.post("/upload", response_model=DocumentCreateResponse)
 async def upload_document(
+    _rate_limited: None = Depends(
+        tenant_rate_limit_dependency(endpoint_key="upload", current_user_dep=get_current_user)
+    ),
+
     filename: str = Form(...),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):
+
+
+
     # Enforce tenant isolation: tenant is derived from the JWT, not from request fields.
     tenant_id = current_user.tenant_id
 

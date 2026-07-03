@@ -207,10 +207,48 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
             fields=local_fields,
         )
 
+    # Prefer Anthropic when configured (tests mock `anthropic`).
+    if getattr(settings, "anthropic_api_key", ""):
+
+        try:
+            from anthropic import AsyncAnthropic  # type: ignore
+        except Exception:
+            AsyncAnthropic = None
+
+        if AsyncAnthropic is not None:
+            client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+            prompt = (
+                f"{SYSTEM_PROMPT}\n\n"
+                "Extract invoice fields and return only JSON.\n\n"
+                f"Invoice Text:\n{document_text}"
+            )
+
+            # `anthropic` SDK style expects messages
+            resp = await client.messages.create(
+                model=settings.anthropic_model,
+                max_tokens=settings.anthropic_max_tokens,
+                temperature=0,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": prompt}],
+            )
+
+            # The real SDK returns `content` blocks with `.text`
+            content_text = ""
+            for block in getattr(resp, "content", []) or []:
+                content_text = getattr(block, "text", None) or content_text
+                if getattr(block, "text", None):
+                    break
+
+            parsed = parse_extraction_json(content_text)
+            # Unit tests expect the returned ExtractionResult to equal parse_extraction_json(...)
+            # (which returns fields parsed from the JSON payload). Do not mutate `fields` here.
+            return parsed
+
+
     # Gemini (google-genai)
     try:
         from google import genai
-    except ModuleNotFoundError:
+    except (ModuleNotFoundError, ImportError):
         # If the google-genai dependency isn't available in the running env,
         # fall back to local heuristic so the UI still gets fields.
         if local_fields is not None:
@@ -233,6 +271,7 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
                 fields=local_fields,
             )
         raise
+
 
     api_key = getattr(settings, "gemini_api_key", "") or getattr(settings, "anthropic_api_key", "")
     model = getattr(settings, "gemini_model", "") or getattr(settings, "anthropic_model", "")
