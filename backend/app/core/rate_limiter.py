@@ -126,8 +126,9 @@ async def enforce_tenant_rate_limit(
             key=redis_key,
             window_seconds=window_seconds,
         )
-    except Exception:
-        logger.exception("rate limiter: redis error; failing open")
+    except Exception as exc:
+        # Fail-open and avoid noisy stack traces for expected "redis not running" cases.
+        logger.warning("rate limiter: redis error; failing open: %s", exc)
         return
 
     if count > request_limit:

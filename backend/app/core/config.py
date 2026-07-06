@@ -45,9 +45,16 @@ class Settings(BaseSettings):
     #   {"tenantA": {"upload": 2, "trigger": 1}, "tenantB": {"upload": 20}}
     rate_limit_overrides_json: str = ""
 
-
+    # Redis configuration (used by rate limiter + caching).
+    # Priority:
+    #  1) explicit env var `redis_url` (if you set it)
+    #  2) env var `REDIS_URL` (common convention)
+    #  3) empty string -> cache/rate_limiter fallback default
+    redis_url: str = ""
 
 
 settings = Settings()
+
+
 
 

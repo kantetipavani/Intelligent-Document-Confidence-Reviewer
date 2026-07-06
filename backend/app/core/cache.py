@@ -12,11 +12,31 @@ logger = logging.getLogger(__name__)
 
 
 def _redis_url() -> str:
-    # docker-compose.yml provisions:
-    #   redis://redis:6379/0 (celery broker)
-    #   redis://redis:6379/1 (celery result)
-    #   redis://redis:6379/2 (cache)
-    return "redis://redis:6379/2"
+    """Return Redis URL for this service.
+
+    Supports overriding via environment variable so the same code works for:
+    - local dev (Redis on host)
+    - docker-compose (Redis reachable via hostname "redis")
+
+    Expected override examples:
+      REDIS_URL=redis://redis:6379/2
+      REDIS_URL=redis://localhost:6379/2
+    """
+
+    # Allow deployments to override Redis endpoint/DB.
+    # Falls back to existing local-dev default.
+    # Also accept common env var name REDIS_URL.
+    # Prefer env var REDIS_URL if present; pydantic settings can also override via settings.redis_url.
+    import os
+
+    return (
+        os.environ.get("REDIS_URL")
+        or getattr(settings, "redis_url", "")
+        or "redis://localhost:6379/2"
+    )
+
+
+
 
 
 
