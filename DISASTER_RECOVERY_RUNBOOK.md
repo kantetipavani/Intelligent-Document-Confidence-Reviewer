@@ -4,6 +4,9 @@
 
 ## 0) Systems & data ownership (from this repo)
 
+> Note: This runbook focuses on behavior **mid-processing** (i.e., when an outage happens while an upload/trigger/event is in flight). It assumes MongoDB is the system of record for extraction artifacts.
+
+
 ### Storage (source of truth)
 - **MongoDB** (Beanie models):
   - `Document`
