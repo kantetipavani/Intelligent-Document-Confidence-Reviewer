@@ -113,7 +113,7 @@ export default function ConfidenceDashboard({
         padding: 14,
         borderRadius: 12,
         border: hasCritical ? "1px solid #1c0505" : "1px solid #161615",
-        background: hasCritical ? "#88ff84" : "#87f87d",
+        background: hasCritical ? "#c9f9c8" : "#bffbba",
         color: "#111",
       }}
     >
