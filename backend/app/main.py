@@ -154,7 +154,17 @@ def create_app() -> FastAPI:
         tags=["dashboard"],
     )
 
+    # Threshold-based anomaly alerting on top of the dashboard
+    from app.api.anomalies_dashboard import router as anomalies_dashboard_router
+
+    app.include_router(
+        anomalies_dashboard_router,
+        prefix="/dashboard",
+        tags=["dashboard"],
+    )
+
     return app
+
 
 
 

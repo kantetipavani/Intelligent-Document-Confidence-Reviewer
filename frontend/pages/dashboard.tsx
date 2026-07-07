@@ -12,9 +12,9 @@ import ConfidenceDashboard from "../components/ConfidenceDashboard";
 
 export default function Dashboard() {
 
-
   const [activePage, setActivePage] =
     useState("dashboard");
+
 
 
   const [selectedFile, setSelectedFile] =
@@ -383,54 +383,15 @@ export default function Dashboard() {
 
           {
             activePage === "dashboard" && (
-
               <>
-
-                <div className="stats-grid">
-
-
-                  <div className="stat-card blue">
-
-                    <h3>
-                      100+
-                    </h3>
-
-                    <p>
-                      Invoices Processed
-                    </p>
-
-                  </div>
-
-                  <div className="stat-card purple">
-
-                    <h3>
-                      98%
-                    </h3>
-
-                    <p>
-                      OCR Accuracy
-                    </p>
-
-                  </div>
-
-                  <div className="stat-card orange">
-
-                    <h3>
-                      18 sec
-                    </h3>
-
-                    <p>
-                      Avg Processing Time
-                    </p>
-
-                  </div>
-
+                {/* Confidence + anomaly cards */}
+                <div>
+                  <ConfidenceDashboard tenantId={"default"} />
                 </div>
-
               </>
-
             )
           }
+
 
           {/* INFO */}
 

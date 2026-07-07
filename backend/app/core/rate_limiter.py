@@ -67,7 +67,11 @@ async def _get_window_counter(
     key: str,
     window_seconds: int,
 ) -> tuple[int, int]:
-    """Return (count, ttl_seconds_remaining)."""
+    """Return (count, ttl_seconds_remaining).
+
+    TTL is returned directly from Lua to avoid race/staleness from a follow-up
+    `TTL` call.
+    """
 
     # Use atomic increment + TTL initialization via a Lua script.
     # If the key does not exist, set TTL to the window.
@@ -75,22 +79,40 @@ async def _get_window_counter(
     # Redis does not expose an atomic INCR+EXPIRE without scripting.
     lua = """
     local current = redis.call('INCR', KEYS[1])
+
+    -- If this is the first hit in the window, set the expiry.
     if current == 1 then
       redis.call('EXPIRE', KEYS[1], ARGV[1])
     end
-    return current
+
+    -- Remaining TTL (in seconds). If TTL is missing, fall back to full window.
+    local ttl = redis.call('TTL', KEYS[1])
+    if (ttl == false) or (ttl < 0) then
+      ttl = ARGV[1]
+    end
+
+    return {current, ttl}
     """
 
-    count: int = int(await redis.eval(lua, 1, key, window_seconds))
+    res = await redis.eval(lua, 1, key, window_seconds)
 
-    ttl = await redis.ttl(key)
-    ttl_seconds = int(ttl) if ttl is not None else window_seconds
-
-    # ttl can be -1 if no expiry; treat as full window.
-    if ttl_seconds < 0:
+    # The production Redis/Lua path returns a 2-tuple/list: {current, ttl}.
+    # Some unit-test fakes return only the incremented count.
+    if isinstance(res, (list, tuple)) and len(res) >= 2:
+        count = int(res[0])
+        ttl_seconds = int(res[1])
+    else:
+        # Fall back to legacy behavior: treat as full window when TTL is unknown.
+        count = int(res)
         ttl_seconds = window_seconds
 
+
+    # Defensive clamp.
+    if ttl_seconds < 1:
+        ttl_seconds = 1
+
     return count, ttl_seconds
+
 
 
 
