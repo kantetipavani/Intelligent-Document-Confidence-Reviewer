@@ -145,6 +145,13 @@ def create_app() -> FastAPI:
     app.include_router(activity_router, prefix="/activity", tags=["activity"])
     app.include_router(logout_router, prefix="/auth", tags=["auth"])
 
+    # Full-text search across processed documents (scaffold fallback; Atlas Search planned)
+    from app.api.document_search import router as document_search_router
+
+    app.include_router(document_search_router, tags=["documents"])
+
+
+
     # Confidence dashboard (tenant scoped; uses audit events as a lightweight datasource)
     from app.api.confidence_dashboard import router as confidence_dashboard_router
 
