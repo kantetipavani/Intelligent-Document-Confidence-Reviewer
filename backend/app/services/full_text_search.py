@@ -1,34 +1,4 @@
 from __future__ import annotations
-
-"""Full-text search integration layer.
-
-Deliverable: Full-Text Search across processed documents (extracted text + metadata)
-using MongoDB Atlas Search.
-
-Atlas Search is implemented via the aggregation $search stage.
-
-Filtering supported:
-- tenant_id (exact match)
-- date range via created_at
-- confidence via a numeric field
-
-Important notes:
-- This project uses Beanie/MongoDB.
-- Atlas Search requires an Atlas Search index. If the index or fields
-  are not configured, this module falls back to best-effort in-Python
-  substring scanning over AuditEvent payloads (matching the scaffold
-  behavior that existed in the API).
-
-Expected stored fields (recommended):
-- documents.source_text (string) - indexed text
-- documents.tenant_id (string) - filter
-- documents.created_at (datetime) - filter
-- documents.confidence (number, 0..1) - filter
-
-If your current schema doesn’t persist documents.confidence, set
-ATLAS_CONFIDENCE_FIELD to an alternate field name or accept fallback.
-"""
-
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional

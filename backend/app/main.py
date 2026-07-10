@@ -170,7 +170,17 @@ def create_app() -> FastAPI:
         tags=["dashboard"],
     )
 
+    # Confidence threshold alerts (optional webhook delivery)
+    from app.api.alerts import router as alerts_router
+
+    app.include_router(
+        alerts_router,
+        prefix="/dashboard",
+        tags=["dashboard"],
+    )
+
     return app
+
 
 
 

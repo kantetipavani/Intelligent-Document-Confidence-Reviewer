@@ -29,15 +29,7 @@ class DocumentSearchResponse(BaseModel):
 
 
 def _parse_confidence_from_audit_payload(payload: Any) -> Optional[float]:
-    """Best-effort extraction of a representative confidence from AuditEvent payload.
-
-    Payload shapes vary across producers/consumers in this scaffold.
-    We try:
-      - payload.extraction.fields[*].confidence
-      - payload.extraction.fields[*] flattened as dict
-      - payload.fields[*].confidence
-    and return the average confidence for that document.
-    """
+    
     if not isinstance(payload, dict):
         return None
 
@@ -90,26 +82,7 @@ async def full_text_search(
     offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
 ):
-    """Full-text search across processed documents.
-
-    Implementation note:
-    - This repository currently uses MongoDB + Beanie.
-    - A production-grade solution should use MongoDB Atlas Search ($search)
-      with a dedicated Atlas Search index on:
-        * document.source_text
-        * extraction-derived text fields (e.g., normalized fields)
-      and include filters for tenant_id, created_at, and confidence.
-
-    For local/dev compatibility without Atlas/Search setup, this endpoint
-    performs best-effort search by:
-    - scanning AuditEvent payloads for query substring matches in extracted
-      field values (or JSON-serialized payload text),
-    - deriving a representative average confidence,
-    - applying tenant/date/confidence filtering.
-
-    This is NOT optimized for large datasets.
-    """
-
+    
     resolved_tenant_id = tenant_id or current_user.tenant_id
     if resolved_tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant mismatch")

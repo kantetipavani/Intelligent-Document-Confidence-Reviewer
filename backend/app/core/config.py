@@ -52,8 +52,26 @@ class Settings(BaseSettings):
     #  3) empty string -> cache/rate_limiter fallback default
     redis_url: str = ""
 
+    # ----------------------------
+    # Confidence alerting defaults
+    # ----------------------------
+    # Thresholds for /alerts/confidence (Deliverable 2)
+    confidence_low_avg_threshold: float = 0.6
+    confidence_manual_review_rate_threshold: float = 0.30
+
+    # Guardrails to prevent noisy alerts when there is little data.
+    confidence_min_extraction_completed_events: int = 5
+    confidence_min_review_events: int = 1
+
+    # Default evaluation window for alerting.
+    confidence_alert_window_seconds_default: int = 7 * 24 * 3600
+
 
 settings = Settings()
+
+
+
+
 
 
 

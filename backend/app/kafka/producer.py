@@ -7,11 +7,6 @@ from typing import Any
 
 from aiokafka import AIOKafkaProducer
 
-
-
-
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -39,15 +34,6 @@ async def publish(
     producer: AIOKafkaProducer | None = None,
     headers: dict[str, str] | None = None,
 ) -> None:
-    """Publish a structured JSON event.
-
-    Envelope schema (JSON body):
-      {"event_type": ..., "payload": ..., "timestamp": ..., "tenant_id": ...}
-
-    Trace propagation:
-    - Trace context is propagated via Kafka headers (W3C tracecontext).
-    """
-
 
     if producer is None:
         raise RuntimeError("Kafka producer is not initialized")

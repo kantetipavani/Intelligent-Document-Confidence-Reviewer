@@ -19,15 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _fields_map_from_result(result: dict[str, Any]) -> dict[str, Any]:
-    """Convert backend result dict into proto `map<string, Field>` shape.
 
-    Proto expects:
-      Field { value: string, confidence: double }
-
-    Backend stores either:
-      { "fields": { key: {value, confidence}, ... } }
-    or (legacy) already-flattened field dicts.
-    """
 
     if not result:
         return {}
