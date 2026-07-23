@@ -41,6 +41,36 @@ export default function Dashboard() {
   const [activityError, setActivityError] =
     useState<string | null>(null);
 
+  const [activeCategory, setActiveCategory] =
+    useState<string>("all");
+
+  const ACCOUNT_EVENTS = new Set(["login", "logout", "change_password", "reset_password"]);
+  const ACTIVITY_EVENTS = new Set(["document_uploaded", "document_retrieved", "extraction_completed", "extraction_retrieved", "review_approved"]);
+
+  const getEventCategory = (eventType: string) => {
+    if (ACCOUNT_EVENTS.has(eventType)) return "account";
+    if (ACTIVITY_EVENTS.has(eventType)) return "activity";
+    return "other";
+  };
+
+  const getEventBadgeClass = (eventType: string) => {
+    if (ACCOUNT_EVENTS.has(eventType)) return "badge badge-account";
+    if (ACTIVITY_EVENTS.has(eventType)) return "badge badge-activity";
+    return "badge badge-other";
+  };
+
+  const getFilteredActivityData = () => {
+    if (activeCategory === "all") return activityData;
+    if (activeCategory === "account") return activityData.filter((ev: any) => ACCOUNT_EVENTS.has(ev.event_type));
+    if (activeCategory === "activity") return activityData.filter((ev: any) => ACTIVITY_EVENTS.has(ev.event_type));
+    return activityData;
+  };
+
+  const handleCategoryChange = (category: string) => {
+    setActiveCategory(category);
+    setSelectedActivityIndex(null);
+  };
+
   const userEmail =
     typeof window !== "undefined"
       ? localStorage.getItem("userEmail")
@@ -179,6 +209,58 @@ export default function Dashboard() {
       );
       window.location.href = "/login";
     }
+  };
+
+  const FIELD_LABELS: Record<string, string> = {
+    invoice_no: "INVOICE_NO",
+    date: "DATE",
+    gstin: "GSTIN",
+    vendor: "VENDOR",
+    amount: "AMOUNT",
+    status: "STATUS",
+  };
+
+  const extractFieldsFromPayload = (payload: any): Record<string, { value: string; confidence: number }> | null => {
+    if (!payload || typeof payload !== "object") return null;
+
+    const safeParseJSON = (v: any) => {
+      if (typeof v !== "string") return v;
+      try { return JSON.parse(v); } catch { return v; }
+    };
+
+    const normalized = safeParseJSON(payload);
+    const extraction = safeParseJSON(normalized?.extraction);
+    const extractionFields = extraction?.fields;
+    const topFields = safeParseJSON(normalized?.fields);
+
+    // Look for fields in various payload shapes
+    const candidates = [
+      extractionFields,
+      topFields,
+      extraction,
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+      if (typeof candidate !== "object") continue;
+      // Check if this has invoice_no or similar known keys
+      const knownKeys = ["invoice_no", "date", "gstin", "vendor", "amount", "status"];
+      for (const key of knownKeys) {
+        if (candidate[key] && typeof candidate[key] === "object" && ("value" in candidate[key] || "confidence" in candidate[key])) {
+          // This is a fields map like { invoice_no: {value, confidence}, ... }
+          const result: Record<string, { value: string; confidence: number }> = {};
+          for (const k of knownKeys) {
+            if (candidate[k] && typeof candidate[k] === "object") {
+              result[k] = {
+                value: candidate[k].value ?? "",
+                confidence: candidate[k].confidence ?? 0,
+              };
+            }
+          }
+          return Object.keys(result).length > 0 ? result : null;
+        }
+      }
+    }
+    return null;
   };
 
   const formatActivityDate = (createdAt: string) => {
@@ -399,32 +481,88 @@ export default function Dashboard() {
             activePage === "info" && (
               <div className="reviewer-page">
                 <div className="upload-card">
-                  <h2>Account & Activity</h2>
+                  <h2><b>Account & Activity</b></h2>
                   
+                  
+                  {/* Category filter tabs */}
+                  <div className="activity-category-tabs">
+                    <button
+                      className={`category-tab ${activeCategory === "all" ? "active" : ""}`}
+                      onClick={() => handleCategoryChange("all")}
+                    >
+                      All
+                    </button>
+                    <button
+                      className={`category-tab ${activeCategory === "account" ? "active" : ""}`}
+                      onClick={() => handleCategoryChange("account")}
+                    >
+                      Account Events
+                    </button>
+                    <button
+                      className={`category-tab ${activeCategory === "activity" ? "active" : ""}`}
+                      onClick={() => handleCategoryChange("activity")}
+                    >
+                      Activity Actions
+                    </button>
+                  </div>
+
                   {activityLoadingState ? (
                     <p>Loading activity...</p>
                   ) : activityErrorMsg ? (
                     <p className="activity-error">{activityErrorMsg}</p>
-                  ) : activityData?.length ? (
+                  ) : getFilteredActivityData()?.length ? (
                     <div className="activity-list">
-                      {activityData.map((ev, idx) => (
-
+                      {getFilteredActivityData().map((ev: any, idx: number) => (
                         <div
                           key={idx}
                           className={
                             "activity-item" +
-                            (selectedActivityIndex === idx
+                            (selectedActivityIndex === 
+                              (activeCategory === "all" ? idx : activityData.indexOf(ev))
                               ? " selected"
                               : "")
                           }
-                          onClick={() => setSelectedActivityIndex(idx)}
+                          onClick={() => setSelectedActivityIndex(
+                            activeCategory === "all" ? idx : activityData.indexOf(ev)
+                          )}
                         >
                           <div className="activity-head">
-                            <span className="activity-type">{ev.event_type}</span>
+                            <span>
+                              <span className={getEventBadgeClass(ev.event_type)}>
+                                {ev.event_type}
+                              </span>
+                              <span className="activity-category-label">
+                                {getEventCategory(ev.event_type) === "account" ? "👤 Account" : 
+                                 getEventCategory(ev.event_type) === "activity" ? "📄 Activity" : ""}
+                              </span>
+                            </span>
                             <span className="activity-date">
                               {formatActivityDate(ev.created_at)}
                             </span>
                           </div>
+                          {/* Inline extracted fields */}
+                          {(getEventCategory(ev.event_type) === "activity") && (() => {
+                            const extractedFields = extractFieldsFromPayload(ev.payload);
+                            if (!extractedFields) return null;
+                            return (
+                              <div className="activity-extracted-fields">
+                                {["invoice_no", "date", "gstin", "vendor", "amount", "status"].map((key) => {
+                                  const field = extractedFields[key];
+                                  if (!field || !field.value) return null;
+                                  const confidencePercent = Math.round((field.confidence || 0) * 100);
+                                  return (
+                                    <div key={key} className="extracted-field-row">
+                                      <span className="extracted-field-label">{FIELD_LABELS[key]}</span>
+                                      <span className="extracted-field-value">{field.value}</span>
+                                      <span className={`extracted-field-confidence ${confidencePercent >= 80 ? 'high' : confidencePercent >= 60 ? 'medium' : 'low'}`}>
+                                        {confidencePercent}%
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                           <pre className="activity-payload">
                             {JSON.stringify(ev.payload, null, 2)}
                           </pre>
@@ -434,8 +572,20 @@ export default function Dashboard() {
                   ) : (
                     <div className="empty-state">
                       <div className="empty-icon">📋</div>
-                      <h3>No activity yet</h3>
+                      <h3>No {activeCategory === "account" ? "account events" : activeCategory === "activity" ? "activity actions" : "activity"} yet</h3>
                       <p>Login, change password, upload invoices, and approve/retrieve actions to see details.</p>
+                    </div>
+                  )}
+
+                  {/* Account vs Activity summary */}
+                  {activityData?.length > 0 && (
+                    <div className="activity-summary">
+                      <span className="summary-item">
+                        <span className="badge badge-account">👤</span> Account: {activityData.filter((ev: any) => ACCOUNT_EVENTS.has(ev.event_type)).length}
+                      </span>
+                      <span className="summary-item">
+                        <span className="badge badge-activity">📄</span> Activity: {activityData.filter((ev: any) => ACTIVITY_EVENTS.has(ev.event_type)).length}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -445,76 +595,38 @@ export default function Dashboard() {
                     
                   </div>
                   <div className="extraction-panel">
-                    {selectedActivityIndex !== null ? (
+                  {selectedActivityIndex !== null ? (
                         <ExtractedFields
                         fields={
                           (() => {
                             const ev = activityData[selectedActivityIndex];
                             const payload = ev?.payload;
 
-                            // INFO payload examples:
-                            // - { extraction: { invoice_no: {value,confidence}, ... } }
-                            // - { extraction: { fields: { invoice_no: {value,confidence}, ... } } }
-                            // - { fields: { ... } }
-                            // Extract a "fields map" (invoice_no/date/...) to feed ExtractedFields.
+                            // New payload shape: payload.extraction is the full ExtractionResult
+                            // containing both structured fields (invoice_number, vendor_name, invoice_total)
+                            // and a nested `fields` map (invoice_no, date, gstin, vendor, amount, status)
+                            
+                            const extraction = payload?.extraction;
+                            if (!extraction) return {};
 
-                            const safeParseJSON = (v: any) => {
-                              if (typeof v !== "string") return v;
-                              try {
-                                return JSON.parse(v);
-                              } catch {
-                                return v;
-                              }
-                            };
-
-                            const normalizedPayload = safeParseJSON(payload);
-
-                            const extraction = safeParseJSON((normalizedPayload as any)?.extraction);
-                            const extractionFields =
-                              extraction && typeof extraction === "object"
-                                ? (extraction as any)?.fields
-                                : undefined;
-
-                            const topFields = safeParseJSON((normalizedPayload as any)?.fields);
-
-                            const candidates = [
-                              extraction && typeof extraction === "object" ? extraction : null,
-                              extractionFields && typeof extractionFields === "object" ? extractionFields : null,
-                              topFields && typeof topFields === "object" ? topFields : null,
-                            ].filter(Boolean);
-
-                            // If extraction has nested fields wrapper, prefer that.
-                            // Otherwise take extraction itself.
-                            // Additionally, handle events like `extraction_retrieved` where
-                            // backend may send a full shape: { ..., extraction: { ...fields... } }
-                            // or { ..., extraction: { fields: { ... } } }.
-                            const pickFields = (obj: any) => {
-                              if (!obj || typeof obj !== "object") return undefined;
-
-                              // Common: { fields: { invoice_no: {...}, ... } }
-                              if (obj.fields && typeof obj.fields === "object") {
-                                return obj.fields;
-                              }
-
-                              // Already a fields map: { invoice_no: {...}, date: {...} }
-                              return obj;
-                            };
-
-                            if (extractionFields && typeof extractionFields === "object") {
-                              return extractionFields;
+                            // The `fields` sub-dict contains the keys the UI expects
+                            if (extraction.fields && typeof extraction.fields === "object") {
+                              return extraction.fields;
                             }
 
-                            if (topFields && typeof topFields === "object") {
-                              return topFields;
+                            // Fallback: extraction itself may have field-like keys
+                            const knownKeys = ["invoice_no", "date", "gstin", "vendor", "amount", "status", "invoice_number", "vendor_name", "invoice_total"];
+                            const hasKnownKey = knownKeys.some(k => Object.prototype.hasOwnProperty.call(extraction, k));
+                            if (hasKnownKey) {
+                              return extraction;
                             }
-
-                            const extracted = pickFields(extraction);
-                            if (extracted && typeof extracted === "object") return extracted;
 
                             return {};
                           })()
                         }
                       />
+
+
 
 
                     ) : (
@@ -1062,6 +1174,87 @@ export default function Dashboard() {
           font-weight: 700;
         }
 
+        .activity-category-tabs {
+          display: flex;
+          gap: 8px;
+          margin-top: 16px;
+          margin-bottom: 4px;
+          border-bottom: 1px solid #e2e8f0;
+          padding-bottom: 8px;
+        }
+
+        .category-tab {
+          padding: 8px 16px;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          background: #fff;
+          color: #64748b;
+          font-size: 13px;
+          font-weight: 600;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .category-tab:hover {
+          border-color: #000;
+          color: #000;
+        }
+
+        .category-tab.active {
+          background: #000;
+          color: #fff;
+          border-color: #000;
+        }
+
+        .badge {
+          display: inline-block;
+          padding: 4px 10px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.3px;
+        }
+
+        .badge-account {
+          background: #e0e7ff;
+          color: #3730a3;
+        }
+
+        .badge-activity {
+          background: #d1fae5;
+          color: #065f46;
+        }
+
+        .badge-other {
+          background: #f3f4f6;
+          color: #374151;
+        }
+
+        .activity-category-label {
+          display: inline-block;
+          margin-left: 8px;
+          font-size: 11px;
+          color: #94a3b8;
+          font-weight: 500;
+        }
+
+        .activity-summary {
+          display: flex;
+          gap: 16px;
+          margin-top: 16px;
+          padding-top: 12px;
+          border-top: 1px solid #e2e8f0;
+        }
+
+        .summary-item {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 13px;
+          color: #64748b;
+          font-weight: 500;
+        }
+
         .activity-list {
           display: flex;
           flex-direction: column;
@@ -1122,6 +1315,61 @@ export default function Dashboard() {
         .extraction-panel {
           padding: 10px 0 0;
           min-height: 280px;
+        }
+
+        .activity-extracted-fields {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-bottom: 10px;
+          padding: 8px;
+          background: #f0fdf4;
+          border-radius: 12px;
+          border: 1px solid #bbf7d0;
+        }
+
+        .extracted-field-row {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 3px 8px;
+          border-radius: 6px;
+          background: #fff;
+          border: 1px solid #e2e8f0;
+          font-size: 11px;
+        }
+
+        .extracted-field-label {
+          font-weight: 700;
+          color: #374151;
+          margin-right: 2px;
+        }
+
+        .extracted-field-value {
+          color: #065f46;
+          font-weight: 600;
+        }
+
+        .extracted-field-confidence {
+          font-weight: 700;
+          font-size: 10px;
+          padding: 1px 5px;
+          border-radius: 4px;
+        }
+
+        .extracted-field-confidence.high {
+          background: #d1fae5;
+          color: #065f46;
+        }
+
+        .extracted-field-confidence.medium {
+          background: #fef3c7;
+          color: #92400e;
+        }
+
+        .extracted-field-confidence.low {
+          background: #fee2e2;
+          color: #991b1b;
         }
 
         .selected-extraction-empty {

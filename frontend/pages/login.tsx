@@ -41,7 +41,7 @@ export default function LoginPage() {
 
       setShowPopup(false);
 
-    }, 2500);
+    }, 5000);
 
   };
 
@@ -192,15 +192,13 @@ export default function LoginPage() {
         showPopup && (
 
           <div
-            className={
+            className={`popup ${
               popupType === "success"
-                ? "popup success"
-                : "popup error"
-            }
+                ? "popup-success"
+                : "popup-error"
+            }`}
           >
-
             {popupMessage}
-
           </div>
 
         )
@@ -305,6 +303,19 @@ export default function LoginPage() {
           </Link>
 
         </p>
+        <Link href="/forgot-password">
+  <p
+    style={{
+      textAlign: "center",
+      marginTop: "15px",
+      cursor: "pointer",
+      color: "#000",
+      fontWeight: "600",
+    }}
+  >
+    Forgot Password?
+  </p>
+</Link>
 
       </div>
 

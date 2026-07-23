@@ -62,6 +62,11 @@ services:
       MONGODB_DB: ${MONGODB_DB}
       JWT_SECRET: ${JWT_SECRET}
       SKIP_DB: ${SKIP_DB}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_EMAIL: ${SMTP_EMAIL}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_STRICT: ${SMTP_STRICT}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     # Uvicorn listens on 8000

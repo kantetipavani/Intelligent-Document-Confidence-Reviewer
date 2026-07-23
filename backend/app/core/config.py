@@ -66,6 +66,15 @@ class Settings(BaseSettings):
     # Default evaluation window for alerting.
     confidence_alert_window_seconds_default: int = 7 * 24 * 3600
 
+    # ----------------------------
+    # SMTP / Email configuration
+    # ----------------------------
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587
+    smtp_email: str | None = None
+    smtp_password: str | None = None
+    smtp_strict: bool = False
+
 
 settings = Settings()
 

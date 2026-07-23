@@ -232,7 +232,7 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            # The real SDK returns `content` blocks with `.text`
+        # The real SDK returns `content` blocks with `.text`
             content_text = ""
             for block in getattr(resp, "content", []) or []:
                 content_text = getattr(block, "text", None) or content_text
@@ -240,8 +240,8 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
                     break
 
             parsed = parse_extraction_json(content_text)
-            # Unit tests expect the returned ExtractionResult to equal parse_extraction_json(...)
-            # (which returns fields parsed from the JSON payload). Do not mutate `fields` here.
+            # Populate the generic `fields` map for frontend compatibility
+            parsed.fields = _build_frontend_fields(parsed, local_fields)
             return parsed
 
 
@@ -326,10 +326,35 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
         raise
 
     # Ensure the generic `fields` map exists for the frontend.
-    # Keep behavior compatible with unit tests: if the LLM does not provide
-    # `fields`, leave it empty. (Frontend can fall back to top-level fields.)
-        # Build frontend fields map expected by UI
-    parsed.fields = {
+    # Build frontend fields map expected by UI
+    parsed.fields = _build_frontend_fields(parsed, local_fields)
+
+    print("\n===== DOCUMENT TEXT =====")
+    print(document_text[:1000])
+    print("=========================\n")
+
+    print("\n===== GEMINI RESPONSE =====")
+    print(text)
+    print("===========================\n")
+
+    print("\n===== FINAL RESPONSE =====")
+    print(parsed.model_dump())
+    print("==========================\n")
+
+    return parsed
+
+
+def _build_frontend_fields(
+    parsed: ExtractionResult,
+    local_fields: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build the generic `fields` map expected by the frontend.
+
+    Maps the structured ExtractionResult fields (invoice_number, vendor_name, invoice_total)
+    into the flat keys the UI expects: invoice_no, vendor, amount, date, gstin, status.
+    Falls back to local heuristic values when available, otherwise uses LLM output.
+    """
+    return {
         "invoice_no": (
             local_fields.get("invoice_no")
             if local_fields and local_fields.get("invoice_no")
@@ -379,20 +404,6 @@ async def extract_invoice_fields(document_text: str) -> ExtractionResult:
             }
         ),
     }
-
-    print("\n===== DOCUMENT TEXT =====")
-    print(document_text[:1000])
-    print("=========================\n")
-
-    print("\n===== GEMINI RESPONSE =====")
-    print(text)
-    print("===========================\n")
-
-    print("\n===== FINAL RESPONSE =====")
-    print(parsed.model_dump())
-    print("==========================\n")
-
-    return parsed
 
 
 def parse_extraction_json(raw_text: str) -> ExtractionResult:

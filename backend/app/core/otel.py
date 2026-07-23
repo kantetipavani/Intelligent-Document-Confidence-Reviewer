@@ -3,21 +3,24 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from opentelemetry import trace
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-# LoggingInstrumentor is optional; package name may vary across versions.
+try:
+    from opentelemetry import trace
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 
-from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
-from opentelemetry.instrumentation.requests import RequestsInstrumentor
-# SQLAlchemyInstrumentor is optional and may not be installed.
+    # LoggingInstrumentor is optional; package name may vary across versions.
+    from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
+    from opentelemetry.instrumentation.requests import RequestsInstrumentor
 
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from opentelemetry.propagate import set_global_textmap
+    from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+    from opentelemetry.propagate import set_global_textmap
+except ModuleNotFoundError:  # pragma: no cover
+    trace = None  # type: ignore[assignment]
+
 
 
 
@@ -29,6 +32,9 @@ def _env_bool(key: str, default: bool = False) -> bool:
 
 
 def configure_otel(app: Any) -> None:
+    if trace is None:  # pragma: no cover
+        return
+
     """Configure OpenTelemetry tracing.
 
     Uses OTLP over HTTP exporter by default.

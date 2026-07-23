@@ -419,7 +419,7 @@ async def run_extraction_and_prepare_review_version(
                     "extraction_run_id": extraction_run_id,
                     "version_number": next_version,
                     "filename": doc.filename,
-                    "extraction": result.get("fields", {}),
+                    "extraction": result,
                     "document_text_length": result.get("document_text_length", 0),
                 },
             )

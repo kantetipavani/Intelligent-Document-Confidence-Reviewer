@@ -14,6 +14,30 @@ class ActivityQuery(BaseModel):
     email: str
 
 
+@router.get("")
+async def get_all_activity(
+    current_user: User = Depends(get_current_user),
+    limit: int = 200,
+) -> list[dict]:
+    # Tenant + user scoped: prevents leaking audit data across tenants.
+    email = normalize_email(current_user.email)
+    events = await AuditEvent.find({
+        "tenant_id": current_user.tenant_id,
+        "user_email": email,
+    }).sort("-created_at").limit(limit).to_list()
+
+    return [
+        {
+            "event_type": e.event_type,
+            "user_email": e.user_email,
+            "tenant": e.tenant_id,
+            "payload": e.payload,
+            "created_at": e.created_at,
+        }
+        for e in events
+    ]
+
+
 @router.get("/me")
 async def get_my_activity(
     current_user: User = Depends(get_current_user),
@@ -30,6 +54,7 @@ async def get_my_activity(
         {
             "event_type": e.event_type,
             "user_email": e.user_email,
+            "tenant": e.tenant_id,
             "payload": e.payload,
             "created_at": e.created_at,
         }

@@ -41,6 +41,36 @@ type ActivityEvent = {
   payload?: any;
 };
 
+/** Extract document detail fields from the event payload for table display */
+function getDocumentDetails(payload: any): { filename: string; docId: string } {
+  if (!payload) return { filename: "", docId: "" };
+  const filename = payload.filename || "";
+  const docId = payload.document_id || "";
+  return { filename, docId };
+}
+
+/** Extract extraction field values from the event payload for table display */
+function getExtractionFields(payload: any): { invoice_no: string; date: string; gstin: string; vendor: string; amount: string; status: string } {
+  if (!payload) return { invoice_no: "", date: "", gstin: "", vendor: "", amount: "", status: "" };
+  
+  // New payload shape: payload.extraction is the full ExtractionResult dict
+  // containing top-level fields (invoice_number, vendor_name, invoice_total) + nested `fields` sub-dict
+  const extraction = payload.extraction;
+  if (!extraction) return { invoice_no: "", date: "", gstin: "", vendor: "", amount: "", status: "" };
+
+  // The extraction now contains both structured fields and a `fields` map
+  const fields = extraction.fields || extraction;
+  
+  return {
+    invoice_no: fields.invoice_no?.value ?? fields.invoice_no ?? (extraction.invoice_number?.value ?? ""),
+    date: fields.date?.value ?? fields.date ?? "",
+    gstin: fields.gstin?.value ?? fields.gstin ?? "",
+    vendor: fields.vendor?.value ?? fields.vendor ?? (extraction.vendor_name?.value ?? ""),
+    amount: fields.amount?.value ?? fields.amount ?? (extraction.invoice_total?.value ?? ""),
+    status: fields.status?.value ?? fields.status ?? "",
+  };
+}
+
 export default function ActivityPage() {
   const [eventTypeFilter, setEventTypeFilter] =
     useState<string>("all");
@@ -160,8 +190,15 @@ export default function ActivityPage() {
                     <TableHead>Event Type</TableHead>
                     <TableHead>User Email</TableHead>
                     <TableHead>Tenant</TableHead>
+                    <TableHead>Document / Filename</TableHead>
+                    <TableHead>Invoice No</TableHead>
+                    <TableHead>Date</TableHead>
+                    <TableHead>GSTIN</TableHead>
+                    <TableHead>Amount</TableHead>
+                    <TableHead>Vendor</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Timestamp</TableHead>
-                    <TableHead>Payload</TableHead>
+                    <TableHead>Details</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -169,8 +206,8 @@ export default function ActivityPage() {
                     <ActivityRow key={idx} event={ev} />
                   ))}
                   {!filtered.length && (
-                    <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8">
+                      <TableRow>
+                      <TableCell colSpan={12} className="text-center py-8">
                         No activity found for the selected filters.
                       </TableCell>
                     </TableRow>
@@ -191,6 +228,8 @@ function ActivityRow({
   event: ActivityEvent;
 }) {
   const [open, setOpen] = useState(false);
+  const { filename } = getDocumentDetails(event.payload);
+  const { invoice_no, date, gstin, amount, vendor, status } = getExtractionFields(event.payload);
 
   return (
     <>
@@ -198,6 +237,27 @@ function ActivityRow({
         <TableCell>{safeString(event.event_type)}</TableCell>
         <TableCell>{safeString(event.user_email)}</TableCell>
         <TableCell>{safeString(event.tenant)}</TableCell>
+        <TableCell className="max-w-[200px] truncate" title={filename}>
+          {safeString(filename) || "—"}
+        </TableCell>
+        <TableCell className="font-mono text-xs">{safeString(invoice_no) || "—"}</TableCell>
+        <TableCell className="font-mono text-xs">{safeString(date) || "—"}</TableCell>
+        <TableCell className="font-mono text-xs">{safeString(gstin) || "—"}</TableCell>
+        <TableCell className="font-mono text-xs">{safeString(amount) || "—"}</TableCell>
+        <TableCell className="max-w-[150px] truncate" title={vendor}>
+          {safeString(vendor) || "—"}
+        </TableCell>
+        <TableCell>
+          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
+            status === "PAID" || status === "COMPLETED" || status === "EXTRACTED"
+              ? "bg-green-100 text-green-700"
+              : status === "PENDING" || status === "UNPAID"
+              ? "bg-yellow-100 text-yellow-700"
+              : "bg-gray-100 text-gray-600"
+          }`}>
+            {safeString(status) || "—"}
+          </span>
+        </TableCell>
         <TableCell>
           {event.created_at
             ? new Date(event.created_at).toLocaleString("en-IN", {
@@ -218,7 +278,7 @@ function ActivityRow({
       </TableRow>
       {open && (
         <TableRow>
-          <TableCell colSpan={5} className="bg-muted/20">
+          <TableCell colSpan={12} className="bg-muted/20">
             <pre className="text-xs whitespace-pre-wrap break-words p-3">
               {JSON.stringify(event.payload ?? {}, null, 2)}
             </pre>

@@ -11,6 +11,7 @@ from app.models.user import User
 from app.services.llm_service import ExtractionResult, extract_invoice_from_document_bytes
 from app.websocket.connection_manager import connection_manager
 from app.core.rate_limiter import enforce_tenant_rate_limit, tenant_rate_limit_dependency
+from app.api.activity import record_event
 
 
 
@@ -134,6 +135,23 @@ async def upload_document(
             reviewer_user_id=None,
         )
 
+        # Record document_uploaded activity event with full extraction result
+        try:
+            await record_event(
+                event_type="document_uploaded",
+                user_email=current_user.email,
+                tenant_id=tenant_id,
+                payload={
+                    "document_id": str(doc.id),
+                    "filename": filename,
+                    "content_type": content_type,
+                    "extraction_run_id": str(run.id),
+                    "extraction": extraction.model_dump(),
+                },
+            )
+        except Exception:
+            pass
+
     except Exception as exc:
         run.status = "failed"
         run.error = str(exc)
@@ -187,6 +205,22 @@ async def get_document(
     doc = await Document.get(document_id)
     if not doc or doc.tenant_id != tenant_id:
         raise HTTPException(status_code=404, detail="document not found")
+
+    # Record document_retrieved activity event
+    try:
+        await record_event(
+            event_type="document_retrieved",
+            user_email=current_user.email,
+            tenant_id=tenant_id,
+            payload={
+                "document_id": document_id,
+                "filename": doc.filename,
+                "content_type": doc.content_type,
+            },
+        )
+    except Exception:
+        pass
+
     return {
         "document_id": str(doc.id),
         "tenant_id": doc.tenant_id,
