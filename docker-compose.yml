@@ -56,17 +56,17 @@ services:
     ports:
       - "8000:8000"
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
-      MONGODB_URI: ${MONGODB_URI}
-      MONGODB_DB: ${MONGODB_DB}
-      JWT_SECRET: ${JWT_SECRET}
-      SKIP_DB: ${SKIP_DB}
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT}
-      SMTP_EMAIL: ${SMTP_EMAIL}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      SMTP_STRICT: ${SMTP_STRICT}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-haiku-latest}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      MONGODB_DB: ${MONGODB_DB:-idc_dev}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-strong-secret}
+      SKIP_DB: ${SKIP_DB:-false}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_EMAIL: ${SMTP_EMAIL:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_STRICT: ${SMTP_STRICT:-false}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
     # Uvicorn listens on 8000
@@ -85,12 +85,12 @@ services:
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
-      MONGODB_URI: ${MONGODB_URI}
-      MONGODB_DB: ${MONGODB_DB}
-      JWT_SECRET: ${JWT_SECRET}
-      SKIP_DB: ${SKIP_DB}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-haiku-latest}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      MONGODB_DB: ${MONGODB_DB:-idc_dev}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-strong-secret}
+      SKIP_DB: ${SKIP_DB:-false}
     command: ["celery", "-A", "app.celery_worker_entrypoint", "worker", "-l", "INFO", "-Q", "extraction"]
 
   zookeeper:
@@ -143,12 +143,12 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_TOPIC_EXTRACTION_REQUESTS: invoice_extraction_requested
       KAFKA_CONSUMER_GROUP_ID: idc-extraction-consumer
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
-      MONGODB_URI: ${MONGODB_URI}
-      MONGODB_DB: ${MONGODB_DB}
-      JWT_SECRET: ${JWT_SECRET}
-      SKIP_DB: ${SKIP_DB}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-haiku-latest}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      MONGODB_DB: ${MONGODB_DB:-idc_dev}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-strong-secret}
+      SKIP_DB: ${SKIP_DB:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     command: ["python", "-m", "app.workers.kafka_extraction_consumer"]
 
@@ -163,12 +163,12 @@ services:
     environment:
       GRPC_HOST: 0.0.0.0
       GRPC_PORT: 50051
-      MONGODB_URI: ${MONGODB_URI}
-      MONGODB_DB: ${MONGODB_DB}
-      SKIP_DB: ${SKIP_DB}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL}
-      JWT_SECRET: ${JWT_SECRET}
+      MONGODB_URI: ${MONGODB_URI:-mongodb://mongo:27017}
+      MONGODB_DB: ${MONGODB_DB:-idc_dev}
+      SKIP_DB: ${SKIP_DB:-false}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-haiku-latest}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-strong-secret}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     ports:
       - "50051:50051"
@@ -180,7 +180,6 @@ services:
     container_name: indcr-jaeger
     ports:
       - "16686:16686" # UI
-      - "4317:4317"   # OTLP gRPC receiver
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.102.0
@@ -215,13 +214,15 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: indcr-frontend
     depends_on:
       - backend
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
 
 volumes:
   mongo_data:

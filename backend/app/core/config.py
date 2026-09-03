@@ -1,18 +1,18 @@
 from __future__ import annotations
-from passlib.context import CryptContext
-from pydantic_settings import BaseSettings
 
+from typing import Any
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    mongodb_uri: str = "mongodb+srv://pavanikanteti557_db_user:HqRUNC6y3vOORicN@cluster0.zfrj0lt.mongodb.net/idc_dev?retryWrites=true&w=majority&appName=Cluster0" 
+    mongodb_uri: str = "mongodb://mongo:27017"
     mongodb_db: str = "idc_dev"
     skip_db: bool = False
 
-    jwt_secret: str = "your_secret_key_here"
+    jwt_secret: str = "change-me-to-a-strong-secret"
     jwt_algorithm: str = "HS256"
     jwt_expiration_minutes: int = 60
 
@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # Gemini (primary)
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-1.5-flash"
+    gemini_model: str = "gemini-2.5-flash"
     gemini_max_output_tokens: int = 800
 
     # When true, backend skips calling any hosted LLM and uses local extraction only.
@@ -62,7 +62,6 @@ class Settings(BaseSettings):
     # Guardrails to prevent noisy alerts when there is little data.
     confidence_min_extraction_completed_events: int = 5
     confidence_min_review_events: int = 1
-
     # Default evaluation window for alerting.
     confidence_alert_window_seconds_default: int = 7 * 24 * 3600
 
@@ -75,13 +74,35 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_strict: bool = False
 
+    @model_validator(mode="before")
+    @classmethod
+    def _strip_empty_env_strings(cls, values: Any) -> Any:
+        if isinstance(values, dict):
+            cleaned = {}
+            for k, v in values.items():
+                if v == "" and k in {
+                    "skip_db",
+                    "skip_llm",
+                    "jwt_expiration_minutes",
+                    "anthropic_max_tokens",
+                    "gemini_max_output_tokens",
+                    "rate_limit_window_seconds",
+                    "rate_limit_upload_default",
+                    "rate_limit_trigger_default",
+                    "confidence_low_avg_threshold",
+                    "confidence_manual_review_rate_threshold",
+                    "confidence_min_extraction_completed_events",
+                    "confidence_min_review_events",
+                    "confidence_alert_window_seconds_default",
+                    "smtp_port",
+                    "smtp_strict",
+                    "smtp_email",
+                    "smtp_password",
+                }:
+                    continue
+                cleaned[k] = v
+            return cleaned
+        return values
+
 
 settings = Settings()
-
-
-
-
-
-
-
-

@@ -38,6 +38,14 @@ def main() -> None:
     print("Generating gRPC stubs:", " ".join(cmd))
     subprocess.check_call(cmd)
 
+    # Ensure relative import for generated gRPC package structure
+    grpc_stub = out_dir / "extraction_pb2_grpc.py"
+    if grpc_stub.exists():
+        content = grpc_stub.read_text(encoding="utf-8")
+        if "import extraction_pb2 as" in content:
+            content = content.replace("import extraction_pb2 as", "from . import extraction_pb2 as")
+            grpc_stub.write_text(content, encoding="utf-8")
+
 
 if __name__ == "__main__":
     main()

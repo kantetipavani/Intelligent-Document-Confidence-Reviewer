@@ -13,25 +13,16 @@ from app.websocket.connection_manager import connection_manager
 from app.core.rate_limiter import enforce_tenant_rate_limit, tenant_rate_limit_dependency
 from app.api.activity import record_event
 
-
-
-
-
 router = APIRouter()
-
-
 # Cache key helper used by other modules (e.g. reviews) for dashboard invalidation.
 # Keeping it here avoids import-time failures.
 def _k_dashboard_stats(tenant_id: str) -> str:
     return f"dashboard_stats:{tenant_id}"
 
-
 class DocumentCreateResponse(BaseModel):
     document_id: str | None = None
     status: str
     extraction: ExtractionResult | None = None
-
-
 
 @router.post("/upload", response_model=DocumentCreateResponse)
 async def upload_document(
@@ -44,18 +35,13 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
 ):
 
-
-
     # Enforce tenant isolation: tenant is derived from the JWT, not from request fields.
     tenant_id = current_user.tenant_id
-
-
 
     if settings.skip_db:
         # In skip_db mode we still require a JWT so UI cannot upload into arbitrary tenants.
         # No persistence occurs, so we just run extraction and return fields.
         pass
-
 
     if not filename:
         raise HTTPException(status_code=400, detail="filename required")
@@ -63,9 +49,6 @@ async def upload_document(
     content_type = file.content_type
 
     file_bytes = await file.read()
-
-
-
 
     # Persist document immediately.
     if settings.skip_db:
@@ -119,9 +102,7 @@ async def upload_document(
         run.result = extraction.model_dump()
         run.error = None
         await run.save()
-        
-        
-
+    
         # Also trigger review version creation through the existing service.
         # This keeps versions/diffs consistent with async pipeline.
         from app.services.extraction_service import create_review_version

@@ -7,8 +7,6 @@ from typing import DefaultDict, List, Optional
 
 from locust import HttpUser, task, between, events
 
-
-
 class INDCRUser(HttpUser):
     wait_time = between(1, 3)
 

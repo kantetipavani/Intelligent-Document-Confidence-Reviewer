@@ -21,6 +21,7 @@ from app.api.status import router as status_router
 from app.api.tenants import router as tenants_router
 from app.api.versions import router as versions_router
 
+
 from app.core.config import settings
 from app.db.init_db import init_db
 
@@ -144,6 +145,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router, prefix="/auth", tags=["auth"])
     app.include_router(activity_router, prefix="/activity", tags=["activity"])
     app.include_router(logout_router, prefix="/auth", tags=["auth"])
+  
 
     # Full-text search across processed documents (scaffold fallback; Atlas Search planned)
     from app.api.document_search import router as document_search_router
@@ -180,10 +182,6 @@ def create_app() -> FastAPI:
     )
 
     return app
-
-
-
-
 
 app = create_app()
 
