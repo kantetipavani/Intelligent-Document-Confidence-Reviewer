@@ -87,10 +87,20 @@ async def test_extract_invoice_fields_uses_mocked_anthropic_response(
 
 
 def test_upload_endpoint_returns_structured_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    from io import BytesIO
+    from pypdf import PdfWriter
+
     # Prevent background tasks (extraction_worker_loop, Kafka consumers)
     # from running during the test by patching them before importing app.main.
     import os
     os.environ["KAFKA_ENABLED"] = "false"
+
+    # Generate a valid minimal single-page PDF
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    pdf_buffer = BytesIO()
+    writer.write(pdf_buffer)
+    valid_pdf_bytes = pdf_buffer.getvalue()
 
     # Monkeypatch extraction_worker_loop BEFORE app.main is imported,
     # so asyncio.create_task gets a no-op coroutine.
@@ -107,7 +117,7 @@ def test_upload_endpoint_returns_structured_json(monkeypatch: pytest.MonkeyPatch
     async def fake_extract_invoice_from_document_bytes(**kwargs):
         assert kwargs["filename"] == "invoice.pdf"
         assert kwargs["content_type"] == "application/pdf"
-        assert kwargs["file_bytes"] == b"%PDF mocked bytes"
+        assert kwargs["file_bytes"] == valid_pdf_bytes
         return ExtractionResult(
             invoice_number={"value": "INV-1001", "confidence": 0.96},
             vendor_name={"value": "Acme Supplies", "confidence": 0.91},
@@ -144,8 +154,6 @@ def test_upload_endpoint_returns_structured_json(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(user_module.User, "find_one", fake_find_one)
 
-
-
     token = create_access_token(
         subject=DummyUser.email,
         tenant_id=DummyUser.tenant_id,
@@ -154,7 +162,6 @@ def test_upload_endpoint_returns_structured_json(monkeypatch: pytest.MonkeyPatch
 
     headers = {"Authorization": f"Bearer {token}"}
 
-
     with TestClient(app) as client:
         response = client.post(
             "/documents/upload",
@@ -162,7 +169,7 @@ def test_upload_endpoint_returns_structured_json(monkeypatch: pytest.MonkeyPatch
             files={
                 "file": (
                     "invoice.pdf",
-                    b"%PDF mocked bytes",
+                    valid_pdf_bytes,
                     "application/pdf",
                 )
             },

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 import { useQuery } from "@tanstack/react-query";
@@ -17,32 +17,35 @@ export default function Dashboard() {
 
 
 
-  const [selectedFile, setSelectedFile] =
-    useState(null);
+  type ExtractedField = {
+    name: string;
+    value: string;
+    confidence: number;
+  };
 
-  const [fields, setFields] =
-    useState([]);
+  type ActivityEvent = {
+    event_type: string;
+    user_email?: string;
+    tenant?: string;
+    created_at?: string;
+    payload?: any;
+  };
 
-  const [isExtracted, setIsExtracted] =
-    useState(false);
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const [activityLoading, setActivityLoading] =
-    useState(false);
-
-  const [activity, setActivity] =
-    useState([]);
-
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [fields, setFields] = useState<ExtractedField[]>([]);
+  const [isExtracted, setIsExtracted] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
   const [selectedActivityIndex, setSelectedActivityIndex] =
     useState<number | null>(null);
-
   const [activityError, setActivityError] =
     useState<string | null>(null);
-
-  const [activeCategory, setActiveCategory] =
-    useState<string>("all");
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [documentIdForWs, setDocumentIdForWs] =
+    useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const ACCOUNT_EVENTS = new Set(["login", "logout", "change_password", "reset_password"]);
   const ACTIVITY_EVENTS = new Set(["document_uploaded", "document_retrieved", "extraction_completed", "extraction_retrieved", "review_approved"]);
@@ -82,25 +85,84 @@ export default function Dashboard() {
       : null;
 
 
-  /* FILE SELECT */
+  /* FILE VALIDATION */
 
-  const handleFileUpload = (e) => {
+  const MAX_FILE_SIZE = 10 * 1024 * 1024;
+  const ALLOWED_EXTENSIONS = [".pdf", ".doc", ".docx", ".txt"];
 
-    if (e.target.files?.[0]) {
-
-      setSelectedFile(
-        e.target.files[0]
-      );
-
-      setIsExtracted(false);
-
+  const clearInvalidFile = (
+    input?: HTMLInputElement | null
+  ) => {
+    if (input) {
+      input.value = "";
     }
 
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+
+    setSelectedFile(null);
+    setIsExtracted(false);
+    setFields([]);
+    setDocumentIdForWs(null);
+  };
+
+  const validateFile = (file: File): boolean => {
+    if (file.size === 0) {
+      setFileError("empty file not processing");
+      alert("empty file not processing");
+      return false;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setFileError("File size exceeds 10MB limit.");
+      alert("File size should not exceed 10MB.");
+      return false;
+    }
+
+    const fileName = file.name.trim().toLowerCase();
+    const hasValidExtension = ALLOWED_EXTENSIONS.some((extension) =>
+      fileName.endsWith(extension)
+    );
+
+    if (!hasValidExtension) {
+      setFileError("Invalid file. Please upload PDF, DOC, DOCX, or TXT file.");
+      alert("Invalid file. Please upload PDF, DOC, DOCX, or TXT file.");
+      return false;
+    }
+
+    setFileError(null);
+    return true;
+  };
+
+  /* FILE SELECT */
+
+  const handleFileUpload = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+
+    setSelectedFile(null);
+    setIsExtracted(false);
+    setFields([]);
+    setDocumentIdForWs(null);
+    setFileError(null);
+
+    if (!file) {
+      return;
+    }
+
+    // Reject invalid files immediately, before they can reach OCR.
+    if (!validateFile(file)) {
+      clearInvalidFile(e.currentTarget);
+      return;
+    }
+
+    setFileError(null);
+    setSelectedFile(file);
   };
 
   /* OCR EXTRACTION */
-
-  const [documentIdForWs, setDocumentIdForWs] = useState<string | null>(null);
 
   const tokenFromStorage = token;
 
@@ -130,8 +192,19 @@ export default function Dashboard() {
   }, [wsReady, wsFields, wsError]);
 
   const handleExtract = async () => {
+    // Prevent duplicate extraction requests while one is already processing.
+    if (loading) {
+      return;
+    }
+
     if (!selectedFile) {
-      alert("Please upload PDF / DOC / TXT file");
+      alert("Please upload an invoice file.");
+      return;
+    }
+
+    // Second validation immediately before the API/OCR call.
+    if (!validateFile(selectedFile)) {
+      clearInvalidFile();
       return;
     }
 
@@ -139,6 +212,7 @@ export default function Dashboard() {
     setFields([]);
     setLoading(true);
     setDocumentIdForWs(null);
+    setFileError(null);
 
     try {
       const formData = new FormData();
@@ -182,9 +256,16 @@ export default function Dashboard() {
             ? data
             : null;
 
-      alert(
-        `OCR Extraction Failed${status ? ` (HTTP ${status})` : ""}${msg ? `: ${msg}` : ""}`
-      );
+      const isMemoryOrEmpty = msg && typeof msg === "string" && msg.toLowerCase().includes("empty");
+      if (isMemoryOrEmpty) {
+        setFileError("empty file not processing");
+        alert("empty file not processing");
+      } else {
+        setFileError(msg ? String(msg) : "OCR Extraction Failed");
+        alert(
+          `OCR Extraction Failed${status ? ` (HTTP ${status})` : ""}${msg ? `: ${msg}` : ""}`
+        );
+      }
 
       setLoading(false);
     }
@@ -297,8 +378,7 @@ export default function Dashboard() {
     activityQuery.data || [];
 
   const activityErrorMsg =
-    (activityQuery.error as any)?.response?.data
-      ?.detail || activityQuery.error
+    activityQuery.error
       ? String(
           (activityQuery.error as any)?.response?.data?.detail ??
             activityQuery.error
@@ -656,23 +736,48 @@ export default function Dashboard() {
 
                   <h2>
                     Upload Invoice
+                 
                   </h2>
+                  
 
                   <div className="upload-box">
-                       <b>
+                    <label
+                      htmlFor="invoice-file"
+                      className="choose-file-btn"
+                    >
+                      Choose File
+                    </label>
+
                     <input
+                      id="invoice-file"
+                      ref={fileInputRef}
                       type="file"
                       accept=".pdf,.doc,.docx,.txt"
                       onChange={handleFileUpload}
+                      disabled={loading}
+                      className="hidden-file-input"
                     />
-                     </b>
-                    
 
+                    {selectedFile && (
+                      <div className="selected-file-name">
+                        {selectedFile.name}
+                      </div>
+                    )}
                   </div>
+                  
+
+                  {fileError && (
+                    <div className="file-error-notice">
+                      ⚠️ <b>{fileError}</b>
+                    </div>
+                  )}
+
+                  
 
                   <button
                     className="extract-btn"
                     onClick={handleExtract}
+                    disabled={loading || !selectedFile}
                   >
 
                     {
@@ -733,7 +838,7 @@ export default function Dashboard() {
                                           0,
                                           Math.min(
                                             100,
-                                            Math.round(raw * 100),
+                                            Math.round(raw <= 1 ? raw * 100 : raw),
                                           ),
                                         );
 
@@ -773,6 +878,24 @@ export default function Dashboard() {
                             )
                           )
                         }
+
+                      </div>
+
+                    ) : fileError ? (
+
+                      <div className="empty-state error-state">
+
+                        <div className="empty-icon">
+                          ⚠️
+                        </div>
+
+                        <h3 className="error-title">
+                          empty file not processing
+                        </h3>
+
+                        <p className="error-desc">
+                          The uploaded file is empty (0 bytes) and cannot be processed. Please upload an invoice file with content.
+                        </p>
 
                       </div>
 
@@ -1071,9 +1194,41 @@ export default function Dashboard() {
   margin-top: 24px;
   padding: 40px;
   border: 2px dashed #999;
-  border-radius: 12px;
+  border-radius: 1px;
   text-align: center;
   background: #fafafa;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.choose-file-btn {
+  display: inline-block;
+  padding: 8px 12px;
+  border: 1px solid #777;
+  border-radius: 2px;
+  background: #f5f5f5;
+  color: #000;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.choose-file-btn:hover {
+  background: #e5e5e5;
+}
+
+.choose-file-btn:focus {
+  outline: 2px solid #000;
+  outline-offset: 2px;
+}
+
+.selected-file-name {
+  margin-top: 15px;
+  font-weight: 600;
+  color: #333;
+  word-break: break-word;
 }
 
 .extract-btn {
@@ -1388,6 +1543,49 @@ export default function Dashboard() {
         .selected-extraction-empty p {
           margin: 0;
           color: #64748b;
+        }
+
+        .file-error-notice {
+          margin-top: 12px;
+          margin-bottom: 12px;
+          padding: 10px 14px;
+          background: #fee2e2;
+          color: #dc2626;
+          border: 1px solid #fca5a5;
+          border-radius: 10px;
+          font-size: 13px;
+          text-align: center;
+          word-break: break-word;
+        }
+
+        .file-preview-badge {
+          margin-top: 10px;
+          margin-bottom: 10px;
+          padding: 8px 12px;
+          background: #f1f5f9;
+          color: #334155;
+          border-radius: 8px;
+          font-size: 13px;
+          font-weight: 600;
+          text-align: center;
+          word-break: break-word;
+        }
+
+        .error-state .empty-icon {
+          color: #dc2626;
+        }
+
+        .error-title {
+          color: #dc2626 !important;
+          font-size: 20px;
+          margin-bottom: 8px;
+        }
+
+        .error-desc {
+          color: #991b1b !important;
+          font-size: 14px;
+          max-width: 420px;
+          margin: 0 auto;
         }
 
         /* MOBILE */

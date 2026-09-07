@@ -1,6 +1,6 @@
 import React from "react";
 import ExtractedFields from "./ExtractedFields";
-import { useEffect } from "react";
+
 type ActivityEvent = {
   event_type: string;
   created_at: string;
@@ -29,6 +29,39 @@ function formatActivityDate(createdAt: string) {
   });
 }
 
+function getExtractionFromActivity(event: ActivityEvent | undefined) {
+  if (!event) {
+    return {};
+  }
+
+  const extraction = event.payload?.extraction ?? event.payload;
+
+  if (
+    extraction?.fields &&
+    typeof extraction.fields === "object" &&
+    !Array.isArray(extraction.fields)
+  ) {
+    const normalized = {
+      ...extraction.fields,
+    };
+
+    Object.keys(extraction).forEach((key) => {
+      if (
+        key === "fields" ||
+        Object.prototype.hasOwnProperty.call(normalized, key)
+      ) {
+        return;
+      }
+
+      normalized[key] = extraction[key];
+    });
+
+    return normalized;
+  }
+
+  return extraction || {};
+}
+
 export default function DocumentList({
   userEmail,
   activityLoading,
@@ -37,10 +70,21 @@ export default function DocumentList({
   selectedActivityIndex,
   onSelectActivityIndex,
 }: DocumentListProps) {
+  const selectedActivity =
+    selectedActivityIndex !== null
+      ? activity[selectedActivityIndex]
+      : undefined;
+
+  const extractedFields = getExtractionFromActivity(selectedActivity);
+
   return (
     <div className="reviewer-page">
+      {/* ================================================================
+          LEFT PANEL - ACCOUNT & ACTIVITY
+          ================================================================ */}
       <div className="upload-card">
         <h2>Account & Activity</h2>
+
         <p className="activity-subtitle">
           User: <b>{userEmail || "Unknown"}</b>
         </p>
@@ -53,19 +97,30 @@ export default function DocumentList({
           <div className="activity-list">
             {activity.map((ev, idx) => (
               <div
-                key={idx}
+                key={`${ev.event_type}-${ev.created_at}-${idx}`}
                 className={
                   "activity-item" +
                   (selectedActivityIndex === idx ? " selected" : "")
                 }
                 onClick={() => onSelectActivityIndex(idx)}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    onSelectActivityIndex(idx);
+                  }
+                }}
               >
                 <div className="activity-head">
-                  <span className="activity-type">{ev.event_type}</span>
+                  <span className="activity-type">
+                    {ev.event_type}
+                  </span>
+
                   <span className="activity-date">
                     {formatActivityDate(ev.created_at)}
                   </span>
                 </div>
+
                 <pre className="activity-payload">
                   {JSON.stringify(ev.payload, null, 2)}
                 </pre>
@@ -75,7 +130,9 @@ export default function DocumentList({
         ) : (
           <div className="empty-state">
             <div className="empty-icon">📋</div>
+
             <h3>No activity yet</h3>
+
             <p>
               Login, change password, upload invoices, and approve/retrieve
               actions to see details.
@@ -84,50 +141,28 @@ export default function DocumentList({
         )}
       </div>
 
+      {/* ================================================================
+          RIGHT PANEL - EXTRACTED FIELDS
+          ================================================================ */}
       <div className="review-panel">
         <div className="review-header">
           <h2>Extracted Fields</h2>
-          <span className="review-tag">From retrieval events</span>
+
+          <span className="review-tag">
+            From retrieval events
+          </span>
         </div>
 
         <div className="extraction-panel">
           {selectedActivityIndex !== null ? (
-            <ExtractedFields
-              fields={(() => {
-                const ev = activity[selectedActivityIndex];
-                const extraction =
-                  ev?.payload?.extraction ?? ev?.payload;
-
-                if (
-                  extraction?.fields &&
-                  typeof extraction.fields === "object"
-                ) {
-                  const normalized = { ...extraction.fields };
-                  Object.keys(extraction).forEach((key) => {
-                    if (
-                      key === "fields" ||
-                      Object.prototype.hasOwnProperty.call(
-                        normalized,
-                        key
-                      )
-                    ) {
-                      return;
-                    }
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    (normalized as any)[key] = (extraction as any)[key];
-                  });
-                  return normalized;
-                }
-
-                return extraction || {};
-              })()}
-            />
+            <ExtractedFields fields={extractedFields} />
           ) : (
             <div className="empty-state selected-extraction-empty">
               <h3>Select an extraction event</h3>
+
               <p>
-                Click an activity item (for example, "extraction_completed")
-                to view its extracted fields here.
+                Click an activity item (for example,
+                "extraction_completed") to view its extracted fields here.
               </p>
             </div>
           )}
@@ -136,4 +171,3 @@ export default function DocumentList({
     </div>
   );
 }
-
