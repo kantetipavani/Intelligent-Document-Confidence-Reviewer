@@ -9,6 +9,7 @@ import api from "../services/api";
 import ExtractedFields from "../components/ExtractedFields";
 import { useExtractionFieldsFromWebSocket } from "../hooks/useExtractionFieldsFromWebSocket";
 import ConfidenceDashboard from "../components/ConfidenceDashboard";
+import { validateFileAsync } from "../utils/fileValidation";
 
 export default function Dashboard() {
 
@@ -33,6 +34,21 @@ export default function Dashboard() {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<{
+    type: "empty" | "malformed" | "oversized" | "unsupported" | "general";
+    title: string;
+    message: string;
+  } | null>(null);
+  const [errorModal, setErrorModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: "empty" | "malformed" | "oversized" | "unsupported" | "general";
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+  });
   const [fields, setFields] = useState<ExtractedField[]>([]);
   const [isExtracted, setIsExtracted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -105,61 +121,86 @@ export default function Dashboard() {
     setIsExtracted(false);
     setFields([]);
     setDocumentIdForWs(null);
+    setLoading(false);
   };
 
-  const validateFile = (file: File): boolean => {
-    if (file.size === 0) {
-      setFileError("empty file not processing");
-      alert("empty file not processing");
-      return false;
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      setFileError("File size exceeds 10MB limit.");
-      alert("File size should not exceed 10MB.");
-      return false;
-    }
-
-    const fileName = file.name.trim().toLowerCase();
-    const hasValidExtension = ALLOWED_EXTENSIONS.some((extension) =>
-      fileName.endsWith(extension)
-    );
-
-    if (!hasValidExtension) {
-      setFileError("Invalid file. Please upload PDF, DOC, DOCX, or TXT file.");
-      alert("Invalid file. Please upload PDF, DOC, DOCX, or TXT file.");
-      return false;
-    }
-
-    setFileError(null);
-    return true;
-  };
-
-  /* FILE SELECT */
-
-  const handleFileUpload = (
-    e: React.ChangeEvent<HTMLInputElement>
+  const processFile = async (
+    file: File | null | undefined,
+    inputElement?: HTMLInputElement | null
   ) => {
-    const file = e.target.files?.[0];
-
     setSelectedFile(null);
     setIsExtracted(false);
     setFields([]);
     setDocumentIdForWs(null);
     setFileError(null);
+    setValidationError(null);
 
     if (!file) {
       return;
     }
 
-    // Reject invalid files immediately, before they can reach OCR.
-    if (!validateFile(file)) {
-      clearInvalidFile(e.currentTarget);
+    // Detect 1st: empty file, malformed file, oversized file
+    const validation = await validateFileAsync(file);
+    if (!validation.isValid) {
+      const err: {
+        type: "empty" | "malformed" | "oversized" | "unsupported" | "general";
+        title: string;
+        message: string;
+      } = {
+        type: (validation.errorType as any) || "general",
+        title: validation.title || "file validation error",
+        message: validation.message || "Invalid file detected. Processing stopped.",
+      };
+      setValidationError(err);
+      setFileError(err.title);
+      setErrorModal({
+        isOpen: true,
+        title: err.title,
+        message: err.message,
+        type: err.type,
+      });
+      clearInvalidFile(inputElement);
       return;
     }
 
+    setValidationError(null);
     setFileError(null);
     setSelectedFile(file);
+  };
+
+  /* FILE SELECT */
+
+  const handleFileUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    await processFile(file, e.currentTarget);
+  };
+
+  /* DRAG AND DROP */
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      await processFile(file);
+    }
   };
 
   /* OCR EXTRACTION */
@@ -202,8 +243,26 @@ export default function Dashboard() {
       return;
     }
 
-    // Second validation immediately before the API/OCR call.
-    if (!validateFile(selectedFile)) {
+    // Detect 1st before proceeding: empty file, malformed file, oversized file
+    const validation = await validateFileAsync(selectedFile);
+    if (!validation.isValid) {
+      const err: {
+        type: "empty" | "malformed" | "oversized" | "unsupported" | "general";
+        title: string;
+        message: string;
+      } = {
+        type: validation.errorType || "general",
+        title: validation.title || "file validation error",
+        message: validation.message || "Invalid file detected. Processing stopped.",
+      };
+      setValidationError(err);
+      setFileError(err.title);
+      setErrorModal({
+        isOpen: true,
+        title: err.title,
+        message: err.message,
+        type: err.type,
+      });
       clearInvalidFile();
       return;
     }
@@ -213,6 +272,7 @@ export default function Dashboard() {
     setLoading(true);
     setDocumentIdForWs(null);
     setFileError(null);
+    setValidationError(null);
 
     try {
       const formData = new FormData();
@@ -256,17 +316,40 @@ export default function Dashboard() {
             ? data
             : null;
 
-      const isMemoryOrEmpty = msg && typeof msg === "string" && msg.toLowerCase().includes("empty");
-      if (isMemoryOrEmpty) {
-        setFileError("empty file not processing");
-        alert("empty file not processing");
-      } else {
-        setFileError(msg ? String(msg) : "OCR Extraction Failed");
-        alert(
-          `OCR Extraction Failed${status ? ` (HTTP ${status})` : ""}${msg ? `: ${msg}` : ""}`
-        );
+      const lowerMsg = String(msg || "").toLowerCase();
+
+      let errType: "empty" | "malformed" | "oversized" | "general" = "general";
+      let errTitle = "OCR Extraction Failed";
+      let errDesc = msg ? String(msg) : "OCR Extraction Failed. Processing stopped.";
+
+      if (lowerMsg.includes("empty")) {
+        errType = "empty";
+        errTitle = "empty file not processing";
+        errDesc = "The uploaded file is empty (0 bytes). Processing stopped.";
+      } else if (lowerMsg.includes("malformed") || lowerMsg.includes("corrupt") || lowerMsg.includes("no pages")) {
+        errType = "malformed";
+        errTitle = "malformed file not processing";
+        errDesc = "The uploaded file is corrupted or malformed. Processing stopped.";
+      } else if (status === 413 || lowerMsg.includes("too large") || lowerMsg.includes("maximum")) {
+        errType = "oversized";
+        errTitle = "oversized file not processing";
+        errDesc = "The uploaded file exceeds the 10MB limit. Processing stopped.";
       }
 
+      setValidationError({
+        type: errType,
+        title: errTitle,
+        message: errDesc,
+      });
+      setFileError(errTitle);
+      setErrorModal({
+        isOpen: true,
+        title: errTitle,
+        message: errDesc,
+        type: errType,
+      });
+
+      alert(`${errTitle}: ${errDesc}`);
       setLoading(false);
     }
   };
@@ -732,7 +815,12 @@ export default function Dashboard() {
 
                 {/* LEFT */}
 
-                <div className="upload-card">
+                <div
+                  className={`upload-card ${isDragging ? "dragging" : ""}`}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                >
 
                   <h2>
                     Upload Invoice
@@ -740,7 +828,12 @@ export default function Dashboard() {
                   </h2>
                   
 
-                  <div className="upload-box">
+                  <div
+                    className={`upload-box ${isDragging ? "drag-active" : ""}`}
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                  >
                     <label
                       htmlFor="invoice-file"
                       className="choose-file-btn"
@@ -758,34 +851,32 @@ export default function Dashboard() {
                       className="hidden-file-input"
                     />
 
-                    {selectedFile && (
+                    <div className="upload-hint">or drag & drop invoice file here (.pdf, .doc, .docx, .txt)</div>
+
+                    {selectedFile && !validationError && (
                       <div className="selected-file-name">
-                        {selectedFile.name}
+                        📄 {selectedFile.name} ({(selectedFile.size / (1024 * 1024)).toFixed(2)} MB)
                       </div>
                     )}
                   </div>
-                  
 
-                  {fileError && (
+                  {validationError && (
                     <div className="file-error-notice">
-                      ⚠️ <b>{fileError}</b>
+                      <div className="error-badge-header">⚠️ <b>{validationError.title}</b></div>
+                      <div className="error-badge-msg">{validationError.message}</div>
                     </div>
                   )}
-
-                  
 
                   <button
                     className="extract-btn"
                     onClick={handleExtract}
-                    disabled={loading || !selectedFile}
+                    disabled={loading || !selectedFile || !!validationError}
                   >
-
                     {
                       loading
                         ? "Processing..."
                         : "Extract Invoice Data"
                     }
-
                   </button>
 
                 </div>
@@ -881,7 +972,7 @@ export default function Dashboard() {
 
                       </div>
 
-                    ) : fileError ? (
+                    ) : validationError ? (
 
                       <div className="empty-state error-state">
 
@@ -890,12 +981,16 @@ export default function Dashboard() {
                         </div>
 
                         <h3 className="error-title">
-                          empty file not processing
+                          {validationError.title}
                         </h3>
 
                         <p className="error-desc">
-                          The uploaded file is empty (0 bytes) and cannot be processed. Please upload an invoice file with content.
+                          {validationError.message}
                         </p>
+
+                        <div className="error-action-hint">
+                          Action stopped. Please select a valid document with content to proceed.
+                        </div>
 
                       </div>
 
@@ -926,6 +1021,48 @@ export default function Dashboard() {
 
             )
           }
+
+          {/* PROPER ERROR POPUP MODAL */}
+          {errorModal.isOpen && (
+            <div
+              className="error-modal-overlay"
+              onClick={() => setErrorModal((prev) => ({ ...prev, isOpen: false }))}
+            >
+              <div
+                className="error-modal-dialog"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="error-modal-header">
+                  <div className="error-modal-icon">⚠️</div>
+                  <div className="error-modal-badge">
+                    {errorModal.type ? `${errorModal.type} error` : "validation error"}
+                  </div>
+                </div>
+
+                <h3 className="error-modal-title">
+                  {errorModal.title}
+                </h3>
+
+                <p className="error-modal-message">
+                  {errorModal.message}
+                </p>
+
+                <div className="error-modal-action-note">
+                  🛑 <b>Action Stopped:</b> Extraction will not proceed until a valid document is uploaded.
+                </div>
+
+                <div className="error-modal-footer">
+                  <button
+                    type="button"
+                    className="error-modal-btn"
+                    onClick={() => setErrorModal((prev) => ({ ...prev, isOpen: false }))}
+                  >
+                    Got It, Dismiss
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
         </main>
 
@@ -1586,6 +1723,146 @@ export default function Dashboard() {
           font-size: 14px;
           max-width: 420px;
           margin: 0 auto;
+        }
+
+        .error-badge-header {
+          font-weight: 700;
+          font-size: 13px;
+          margin-bottom: 4px;
+          text-transform: capitalize;
+        }
+
+        .error-badge-msg {
+          font-size: 12px;
+          opacity: 0.95;
+          line-height: 1.4;
+        }
+
+        .error-action-hint {
+          margin-top: 14px;
+          font-size: 13px;
+          font-weight: 600;
+          color: #b91c1c;
+          padding: 8px 14px;
+          background: #fef2f2;
+          border: 1px dashed #fca5a5;
+          border-radius: 8px;
+          display: inline-block;
+        }
+
+        /* POPUP ERROR MODAL */
+        .error-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.65);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          padding: 20px;
+          animation: fadeInOverlay 0.2s ease;
+        }
+
+        @keyframes fadeInOverlay {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .error-modal-dialog {
+          background: #ffffff;
+          border-radius: 18px;
+          max-width: 480px;
+          width: 100%;
+          padding: 28px;
+          box-shadow: 0 20px 40px -15px rgba(220, 38, 38, 0.2), 0 0 0 1px rgba(239, 68, 68, 0.15);
+          text-align: center;
+          animation: popModal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes popModal {
+          from {
+            transform: scale(0.92) translateY(10px);
+            opacity: 0;
+          }
+          to {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+          }
+        }
+
+        .error-modal-header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .error-modal-icon {
+          font-size: 48px;
+          line-height: 1;
+        }
+
+        .error-modal-badge {
+          background: #fee2e2;
+          color: #dc2626;
+          border: 1px solid #fecaca;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 4px 10px;
+          border-radius: 999px;
+        }
+
+        .error-modal-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #991b1b;
+          margin: 0 0 10px 0;
+          text-transform: capitalize;
+        }
+
+        .error-modal-message {
+          font-size: 14px;
+          color: #475569;
+          line-height: 1.5;
+          margin: 0 0 18px 0;
+        }
+
+        .error-modal-action-note {
+          background: #fef2f2;
+          border-left: 4px solid #ef4444;
+          padding: 10px 14px;
+          border-radius: 6px;
+          font-size: 13px;
+          color: #7f1d1d;
+          text-align: left;
+          margin-bottom: 22px;
+          line-height: 1.4;
+        }
+
+        .error-modal-footer {
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .error-modal-btn {
+          width: 100%;
+          background: #dc2626;
+          color: #ffffff;
+          border: none;
+          padding: 12px 20px;
+          border-radius: 10px;
+          font-weight: 700;
+          font-size: 14px;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .error-modal-btn:hover {
+          background: #b91c1c;
         }
 
         /* MOBILE */

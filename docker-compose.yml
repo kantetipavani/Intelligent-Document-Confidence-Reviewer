@@ -43,7 +43,7 @@ services:
       retries: 10
 
   backend:
-
+    image: indcr-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -73,6 +73,7 @@ services:
 
   # Legacy Celery worker (kept for backward compatibility; extraction trigger uses Kafka by default)
   celery_worker:
+    image: indcr-celery-worker:latest
     build:
       context: ./backend
       dockerfile: Dockerfile.celery
@@ -130,6 +131,7 @@ services:
       - kafka
 
   kafka_extraction_consumer:
+    image: indcr-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -150,9 +152,12 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-strong-secret}
       SKIP_DB: ${SKIP_DB:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    healthcheck:
+      disable: true
     command: ["python", "-m", "app.workers.kafka_extraction_consumer"]
 
   grpc_extraction_server:
+    image: indcr-backend:latest
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -170,6 +175,8 @@ services:
       ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-3-5-haiku-latest}
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-strong-secret}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    healthcheck:
+      disable: true
     ports:
       - "50051:50051"
     command: ["python", "-m", "app.grpc.server_entrypoint"]
@@ -211,6 +218,7 @@ services:
       - "5555:5555"  
 
   frontend:
+    image: indcr-frontend:latest
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -220,7 +228,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
 

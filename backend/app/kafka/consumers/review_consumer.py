@@ -69,6 +69,7 @@ async def run_review_consumer(*, stop_event: asyncio.Event) -> None:
                                     if event_type == "DOCUMENT_APPROVED"
                                     else "REJECTED",
                                 },
+                                tenant_id=str(tenant_id),
                             )
                             await connection_manager.broadcast_to_tenant(
                                 str(tenant_id),

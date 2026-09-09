@@ -42,6 +42,23 @@ async def document_websocket(websocket: WebSocket, document_id: str) -> None:
             await websocket.close(code=4001)
             return
 
+        # Validate document tenant ownership to ensure strict tenant isolation
+        from app.models.document import Document
+
+        doc = None
+        try:
+            doc = await Document.get(str(document_id))
+        except Exception:
+            doc = None
+
+        if not settings.skip_db and not doc:
+            await websocket.close(code=4004)
+            return
+
+        if doc and str(doc.tenant_id) != str(tenant_id):
+            await websocket.close(code=4003)
+            return
+
         # Connect and register
         await connection_manager.connect(
             document_id=document_id,
@@ -138,7 +155,6 @@ async def dashboard_websocket(websocket: WebSocket) -> None:
             await websocket.close(code=4001)
             return
 
-        await websocket.accept()
         await connection_manager.connect_dashboard(websocket=websocket, tenant_id=str(tenant_id))
         await websocket.send_json({"type": "connected", "tenant_id": str(tenant_id)})
 
@@ -149,5 +165,9 @@ async def dashboard_websocket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         await connection_manager.disconnect_dashboard(websocket)
     except Exception:
-        await websocket.close(code=4001)
+        await connection_manager.disconnect_dashboard(websocket)
+        try:
+            await websocket.close(code=4001)
+        except Exception:
+            pass
 

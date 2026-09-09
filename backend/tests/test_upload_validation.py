@@ -166,3 +166,32 @@ def test_upload_empty_pdf_no_pages_fails_validation(client: TestClient, auth_hea
     assert response.status_code == 400
     detail = response.json().get("detail", "")
     assert "no pages" in detail.lower() or "malformed" in detail.lower()
+
+
+def test_upload_malformed_doc_fails_validation(client: TestClient, auth_headers: dict[str, str]):
+    """Test case 7: Malformed DOC without OLE signature is rejected with HTTP 400."""
+    response = client.post(
+        "/documents/upload",
+        data={"filename": "invoice.doc"},
+        files={"file": ("invoice.doc", b"not an ole compound document 12345", "application/msword")},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 400
+    detail = response.json().get("detail", "")
+    assert "malformed" in detail.lower() or "corrupted" in detail.lower()
+
+
+def test_upload_whitespace_only_txt_fails_validation(client: TestClient, auth_headers: dict[str, str]):
+    """Test case 8: Whitespace-only text file is rejected as empty with HTTP 400."""
+    response = client.post(
+        "/documents/upload",
+        data={"filename": "empty_invoice.txt"},
+        files={"file": ("empty_invoice.txt", b"   \n\n\t  \r\n   ", "text/plain")},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 400
+    detail = response.json().get("detail", "")
+    assert "empty" in detail.lower()
+

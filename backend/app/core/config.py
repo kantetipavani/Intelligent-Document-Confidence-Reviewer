@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=(".env", "backend/.env"), extra="ignore")
 
-    mongodb_uri: str = "mongodb://mongo:27017"
+    mongodb_uri: str = os.getenv("MONGODB_URI", "mongodb://127.0.0.1:27017")
     mongodb_db: str = "idc_dev"
     skip_db: bool = False
 
@@ -73,6 +74,13 @@ class Settings(BaseSettings):
     smtp_email: str | None = None
     smtp_password: str | None = None
     smtp_strict: bool = False
+
+    def kafka_bootstrap_servers(self) -> str:
+        return os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+
+    def kafka_consumer_group_id(self, service: str = "default") -> str:
+        prefix = os.getenv("KAFKA_CONSUMER_GROUP_ID", "idc")
+        return f"{prefix}-{service}-consumer"
 
     @model_validator(mode="before")
     @classmethod

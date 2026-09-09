@@ -5,8 +5,26 @@ import logging
 from typing import Any, AsyncIterator
 
 import grpc
-from grpc import ServicerContext
-from opentelemetry import trace as ot_trace
+try:
+    from opentelemetry import trace as ot_trace
+except (ImportError, ModuleNotFoundError):  # pragma: no cover
+    class _DummySpan:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    class _DummyTracer:
+        def start_as_current_span(self, *args, **kwargs):
+            return _DummySpan()
+
+    class _DummyTrace:
+        @staticmethod
+        def get_tracer(*args, **kwargs):
+            return _DummyTracer()
+
+    ot_trace = _DummyTrace()
 
 from app.models.extraction_run import ExtractionRun
 from app.services.extraction_service import run_extraction_and_prepare_review_version

@@ -15,6 +15,7 @@ class ConnectionManager:
 
     def __init__(self) -> None:
         self.document_connections: DefaultDict[str, Set[WebSocket]] = defaultdict(set)
+        self.document_socket_tenants: Dict[WebSocket, str] = {}
         self.dashboard_connections: DefaultDict[str, Set[WebSocket]] = defaultdict(set)
 
     async def connect(
@@ -22,8 +23,10 @@ class ConnectionManager:
     ) -> None:
         await websocket.accept()
         self.document_connections[document_id].add(websocket)
+        self.document_socket_tenants[websocket] = str(tenant_id)
 
     async def disconnect(self, document_id: str, websocket: WebSocket) -> None:
+        self.document_socket_tenants.pop(websocket, None)
         if document_id in self.document_connections:
             self.document_connections[document_id].discard(websocket)
             if not self.document_connections[document_id]:
@@ -41,9 +44,14 @@ class ConnectionManager:
                 if not self.dashboard_connections[tenant_id]:
                     del self.dashboard_connections[tenant_id]
 
-    async def broadcast_to_document(self, document_id: str, message: dict) -> None:
+    async def broadcast_to_document(
+        self, document_id: str, message: dict, tenant_id: str | None = None
+    ) -> None:
         connections = list(self.document_connections.get(document_id, set()))
         for ws in connections:
+            ws_tenant = self.document_socket_tenants.get(ws)
+            if tenant_id is not None and ws_tenant is not None and ws_tenant != str(tenant_id):
+                continue
             try:
                 await ws.send_json(message)
             except Exception:

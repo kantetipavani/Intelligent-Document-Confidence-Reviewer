@@ -67,3 +67,30 @@ def get_tracer_provider() -> TracerProvider | None:
     # type: ignore[attr-defined]
     return provider if isinstance(provider, TracerProvider) else None
 
+
+def inject_trace_into_headers(headers: dict[str, str] | None = None) -> dict[str, str]:
+    carrier = headers if headers is not None else {}
+    try:
+        from opentelemetry.propagate import inject
+        inject(carrier)
+    except Exception:
+        pass
+    return carrier
+
+
+def extract_trace_from_headers(headers: dict[str, Any] | None = None) -> Any:
+    if not headers:
+        return None
+    try:
+        from opentelemetry.propagate import extract
+        carrier = {
+            (k.decode("utf-8") if isinstance(k, bytes) else str(k)): (
+                v.decode("utf-8") if isinstance(v, bytes) else str(v)
+            )
+            for k, v in headers.items()
+        }
+        return extract(carrier)
+    except Exception:
+        return None
+
+

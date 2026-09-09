@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../services/api";
 import { useExtractionFieldsFromWebSocket } from "../hooks/useExtractionFieldsFromWebSocket";
+import { validateFileAsync } from "../utils/fileValidation";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -22,6 +23,21 @@ type ExtractedField = {
 export default function InvoicePage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<{
+    type: "empty" | "malformed" | "oversized" | "unsupported" | "general";
+    title: string;
+    message: string;
+  } | null>(null);
+  const [errorModal, setErrorModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: "empty" | "malformed" | "oversized" | "unsupported" | "general";
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+  });
   const [fields, setFields] = useState<ExtractedField[]>([]);
   const [isExtracted, setIsExtracted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -74,104 +90,100 @@ export default function InvoicePage() {
     );
   };
 
-  /*
-   * FILE VALIDATION
-   *
-   * This validation happens BEFORE extraction.
-   *
-   * Invalid files:
-   * - empty
-   * - larger than 10 MB
-   * - unsupported extension
-   * - unsupported MIME type
-   *
-   * are rejected immediately.
-   */
-  const validateFile = (file: File): boolean => {
-    // 1. Empty file
-    if (file.size === 0) {
-      setFileError("empty file not processing");
-      alert(
-        "empty file not processing"
-      );
-      return false;
+  const clearInvalidFile = (input?: HTMLInputElement | null) => {
+    if (input) {
+      input.value = "";
     }
-
-    // 2. Maximum size
-    if (file.size > MAX_FILE_SIZE) {
-      setFileError("File size should not exceed 10MB.");
-      alert(
-        "File size should not exceed 10MB."
-      );
-      return false;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
-
-    // 3. Extension
-    const fileName = file.name.toLowerCase().trim();
-
-    const hasValidExtension = ALLOWED_EXTENSIONS.some(
-      (extension) => fileName.endsWith(extension)
-    );
-
-    if (!hasValidExtension) {
-      setFileError("Invalid file type. Please upload a PDF, DOC, DOCX, or TXT file.");
-      alert(
-        "Invalid file type. Please upload a PDF, DOC, DOCX, or TXT file."
-      );
-      return false;
-    }
-
-    // 4. MIME type
-    //
-    // Some browsers provide an empty MIME type.
-    // Empty MIME type is therefore allowed.
-    if (
-      file.type &&
-      !ALLOWED_FILE_TYPES.includes(file.type)
-    ) {
-      setFileError("Invalid file type. Please upload a PDF, DOC, DOCX, or TXT file.");
-      alert(
-        "Invalid file type. Please upload a PDF, DOC, DOCX, or TXT file."
-      );
-      return false;
-    }
-
-    setFileError(null);
-    return true;
+    setSelectedFile(null);
+    setIsExtracted(false);
+    setFields([]);
+    setDocumentId(null);
+    setLoading(false);
   };
 
-  /*
-   * FILE UPLOAD
-   *
-   * Validation happens here immediately.
-   * Invalid files never become selected files.
-   */
-  const handleFileUpload = (
-    e: React.ChangeEvent<HTMLInputElement>
+  const processFile = async (
+    file: File | null | undefined,
+    inputElement?: HTMLInputElement | null
   ) => {
-    const file = e.target.files?.[0];
-
-    // Reset old extraction data
+    // Reset old extraction data & errors
     setSelectedFile(null);
     setIsExtracted(false);
     setFields([]);
     setDocumentId(null);
     setFileError(null);
+    setValidationError(null);
 
     if (!file) {
       return;
     }
 
-    // IMPORTANT:
-    // Validate BEFORE accepting the file.
-    if (!validateFile(file)) {
-      e.target.value = "";
+    // Detect 1st: empty file, malformed file, oversized file
+    const validation = await validateFileAsync(file);
+    if (!validation.isValid) {
+      const err: {
+        type: "empty" | "malformed" | "oversized" | "unsupported" | "general";
+        title: string;
+        message: string;
+      } = {
+        type: (validation.errorType as any) || "general",
+        title: validation.title || "file validation error",
+        message: validation.message || "Invalid file detected. Processing stopped.",
+      };
+      setValidationError(err);
+      setFileError(err.title);
+      setErrorModal({
+        isOpen: true,
+        title: err.title,
+        message: err.message,
+        type: err.type,
+      });
+      clearInvalidFile(inputElement);
       return;
     }
 
     // Valid file
+    setValidationError(null);
     setFileError(null);
     setSelectedFile(file);
+  };
+
+  /*
+   * FILE UPLOAD
+   */
+  const handleFileUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    await processFile(file, e.currentTarget);
+  };
+
+  /* DRAG AND DROP */
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      await processFile(file);
+    }
   };
 
   /*
@@ -188,15 +200,27 @@ export default function InvoicePage() {
       return;
     }
 
-    // Extra validation before API call
-    if (!validateFile(selectedFile)) {
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-      setSelectedFile(null);
-      setIsExtracted(false);
-      setFields([]);
-      setDocumentId(null);
+    // Detect 1st before proceeding: empty file, malformed file, oversized file
+    const validation = await validateFileAsync(selectedFile);
+    if (!validation.isValid) {
+      const err: {
+        type: "empty" | "malformed" | "oversized" | "unsupported" | "general";
+        title: string;
+        message: string;
+      } = {
+        type: validation.errorType || "general",
+        title: validation.title || "file validation error",
+        message: validation.message || "Invalid file detected. Processing stopped.",
+      };
+      setValidationError(err);
+      setFileError(err.title);
+      setErrorModal({
+        isOpen: true,
+        title: err.title,
+        message: err.message,
+        type: err.type,
+      });
+      clearInvalidFile();
       return;
     }
 
@@ -205,6 +229,7 @@ export default function InvoicePage() {
     setDocumentId(null);
     setLoading(true);
     setFileError(null);
+    setValidationError(null);
 
     try {
       const formData = new FormData();
@@ -324,28 +349,48 @@ export default function InvoicePage() {
         error
       );
 
+      const status = error?.response?.status;
+      const data = error?.response?.data;
       const backendMessage =
-        error?.response?.data?.detail ||
-        error?.response?.data?.message;
+        (data && (data.detail || data.message))
+          ? data.detail || data.message
+          : typeof data === "string"
+            ? data
+            : null;
 
-      const isMemoryOrEmpty = backendMessage && typeof backendMessage === "string" && backendMessage.toLowerCase().includes("empty");
-      if (isMemoryOrEmpty) {
-        setFileError("empty file not processing");
-        alert("empty file not processing");
-      } else if (backendMessage) {
-        setFileError(String(backendMessage));
-        alert(String(backendMessage));
-      } else if (error?.message) {
-        setFileError(`OCR Extraction Failed: ${error.message}`);
-        alert(
-          `OCR Extraction Failed: ${error.message}`
-        );
-      } else {
-        setFileError("OCR Extraction Failed. Please try again.");
-        alert(
-          "OCR Extraction Failed. Please try again."
-        );
+      const lowerMsg = String(backendMessage || "").toLowerCase();
+
+      let errType: "empty" | "malformed" | "oversized" | "general" = "general";
+      let errTitle = "OCR Extraction Failed";
+      let errDesc = backendMessage ? String(backendMessage) : "OCR Extraction Failed. Processing stopped.";
+
+      if (lowerMsg.includes("empty")) {
+        errType = "empty";
+        errTitle = "empty file not processing";
+        errDesc = "The uploaded file is empty (0 bytes). Processing stopped.";
+      } else if (lowerMsg.includes("malformed") || lowerMsg.includes("corrupt") || lowerMsg.includes("no pages")) {
+        errType = "malformed";
+        errTitle = "malformed file not processing";
+        errDesc = "The uploaded file is corrupted or malformed. Processing stopped.";
+      } else if (status === 413 || lowerMsg.includes("too large") || lowerMsg.includes("maximum")) {
+        errType = "oversized";
+        errTitle = "oversized file not processing";
+        errDesc = "The uploaded file exceeds the 10MB limit. Processing stopped.";
       }
+
+      setValidationError({
+        type: errType,
+        title: errTitle,
+        message: errDesc,
+      });
+      setFileError(errTitle);
+      setErrorModal({
+        isOpen: true,
+        title: errTitle,
+        message: errDesc,
+        type: errType,
+      });
+      alert(`${errTitle}: ${errDesc}`);
 
       setIsExtracted(false);
       setFields([]);
@@ -360,7 +405,12 @@ export default function InvoicePage() {
 
       {/* LEFT SIDE */}
 
-      <div className="upload-card">
+      <div
+        className={`upload-card ${isDragging ? "dragging" : ""}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
 
         <h2>
           Upload Invoice
@@ -368,7 +418,12 @@ export default function InvoicePage() {
           (maximum file size: 10MB)
         </h2>
 
-        <div className="upload-box">
+        <div
+          className={`upload-box ${isDragging ? "drag-active" : ""}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
 
           <label>
             Upload file
@@ -382,13 +437,18 @@ export default function InvoicePage() {
             />
           </label>
 
-          {fileError && (
+          <div style={{ fontSize: "12px", color: "#64748b", marginTop: "8px" }}>
+            or drag & drop invoice file here
+          </div>
+
+          {validationError && (
             <div className="file-error-notice">
-              ⚠️ <b>{fileError}</b>
+              ⚠️ <b>{validationError.title}</b>
+              <div style={{ fontSize: "12px", marginTop: "4px" }}>{validationError.message}</div>
             </div>
           )}
 
-          {selectedFile && !fileError && (
+          {selectedFile && !validationError && (
             <div className="file-preview">
 
               📄 {selectedFile.name}
@@ -417,7 +477,7 @@ export default function InvoicePage() {
           type="button"
           className="extract-btn"
           onClick={handleExtract}
-          disabled={loading || !selectedFile}
+          disabled={loading || !selectedFile || !!validationError}
         >
           {loading
             ? "Processing..."
@@ -509,7 +569,7 @@ export default function InvoicePage() {
 
           </div>
 
-        ) : fileError ? (
+        ) : validationError ? (
 
           <div className="empty-state error-state">
 
@@ -518,11 +578,11 @@ export default function InvoicePage() {
             </div>
 
             <h3 className="error-title">
-              empty file not processing
+              {validationError.title}
             </h3>
 
             <p className="error-desc">
-              The uploaded file is empty (0 bytes) and cannot be processed. Please upload an invoice file with content.
+              {validationError.message}
             </p>
 
           </div>
@@ -548,6 +608,48 @@ export default function InvoicePage() {
         )}
 
       </div>
+
+      {/* PROPER ERROR POPUP MODAL */}
+      {errorModal.isOpen && (
+        <div
+          className="error-modal-overlay"
+          onClick={() => setErrorModal((prev) => ({ ...prev, isOpen: false }))}
+        >
+          <div
+            className="error-modal-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="error-modal-header">
+              <div className="error-modal-icon">⚠️</div>
+              <div className="error-modal-badge">
+                {errorModal.type ? `${errorModal.type} error` : "validation error"}
+              </div>
+            </div>
+
+            <h3 className="error-modal-title">
+              {errorModal.title}
+            </h3>
+
+            <p className="error-modal-message">
+              {errorModal.message}
+            </p>
+
+            <div className="error-modal-action-note">
+              🛑 <b>Action Stopped:</b> Extraction will not proceed until a valid document is uploaded.
+            </div>
+
+            <div className="error-modal-footer">
+              <button
+                type="button"
+                className="error-modal-btn"
+                onClick={() => setErrorModal((prev) => ({ ...prev, isOpen: false }))}
+              >
+                Got It, Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx>{`
 
@@ -796,6 +898,121 @@ export default function InvoicePage() {
           font-size: 14px;
           max-width: 420px;
           margin: 0 auto;
+        }
+
+        /* POPUP ERROR MODAL */
+        .error-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(15, 23, 42, 0.65);
+          backdrop-filter: blur(4px);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 9999;
+          padding: 20px;
+          animation: fadeInOverlay 0.2s ease;
+        }
+
+        @keyframes fadeInOverlay {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .error-modal-dialog {
+          background: #ffffff;
+          border-radius: 18px;
+          max-width: 480px;
+          width: 100%;
+          padding: 28px;
+          box-shadow: 0 20px 40px -15px rgba(220, 38, 38, 0.2), 0 0 0 1px rgba(239, 68, 68, 0.15);
+          text-align: center;
+          animation: popModal 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes popModal {
+          from {
+            transform: scale(0.92) translateY(10px);
+            opacity: 0;
+          }
+          to {
+            transform: scale(1) translateY(0);
+            opacity: 1;
+          }
+        }
+
+        .error-modal-header {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+
+        .error-modal-icon {
+          font-size: 48px;
+          line-height: 1;
+        }
+
+        .error-modal-badge {
+          background: #fee2e2;
+          color: #dc2626;
+          border: 1px solid #fecaca;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 4px 10px;
+          border-radius: 999px;
+        }
+
+        .error-modal-title {
+          font-size: 20px;
+          font-weight: 800;
+          color: #991b1b;
+          margin: 0 0 10px 0;
+          text-transform: capitalize;
+        }
+
+        .error-modal-message {
+          font-size: 14px;
+          color: #475569;
+          line-height: 1.5;
+          margin: 0 0 18px 0;
+        }
+
+        .error-modal-action-note {
+          background: #fef2f2;
+          border-left: 4px solid #ef4444;
+          padding: 10px 14px;
+          border-radius: 6px;
+          font-size: 13px;
+          color: #7f1d1d;
+          text-align: left;
+          margin-bottom: 22px;
+          line-height: 1.4;
+        }
+
+        .error-modal-footer {
+          display: flex;
+          justify-content: flex-end;
+        }
+
+        .error-modal-btn {
+          width: 100%;
+          background: #dc2626;
+          color: #ffffff;
+          border: none;
+          padding: 12px 20px;
+          border-radius: 10px;
+          font-weight: 700;
+          font-size: 14px;
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .error-modal-btn:hover {
+          background: #b91c1c;
         }
 
         @media (max-width: 1000px) {

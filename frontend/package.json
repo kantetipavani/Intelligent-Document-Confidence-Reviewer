@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "jest"
+    "test": "jest",
+    "docker:up": "powershell -ExecutionPolicy Bypass -File ../start-docker.ps1"
   },
   "dependencies": {
     "@radix-ui/react-progress": "^1.1.9",

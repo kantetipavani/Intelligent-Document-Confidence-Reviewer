@@ -6,7 +6,34 @@ import logging
 from typing import Any
 
 from aiokafka import AIOKafkaConsumer
-from opentelemetry import trace as ot_trace
+
+try:
+    from opentelemetry import trace as ot_trace
+except (ImportError, ModuleNotFoundError):  # pragma: no cover
+    class _DummySpan:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return False
+
+    class _DummyTracer:
+        def start_as_current_span(self, *args, **kwargs):
+            return _DummySpan()
+
+    class _DummyTrace:
+        class SpanKind:
+            CONSUMER = "CONSUMER"
+            SERVER = "SERVER"
+            CLIENT = "CLIENT"
+            PRODUCER = "PRODUCER"
+            INTERNAL = "INTERNAL"
+
+        @staticmethod
+        def get_tracer(*args, **kwargs):
+            return _DummyTracer()
+
+    ot_trace = _DummyTrace()
 
 from app.core.config import settings
 from app.kafka.topics import DOCUMENT_EVENTS
@@ -14,7 +41,7 @@ from app.models.document import Document
 from app.models.extraction_run import ExtractionRun
 from app.services.llm_service import extract_invoice_from_document_bytes
 from app.services.version_service import create_review_version
-from backend.app.core.tracing import extract_trace_from_headers
+from app.core.tracing import extract_trace_from_headers
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +132,7 @@ async def run_extraction_consumer(*, stop_event: asyncio.Event) -> None:
                                 "status": "PROCESSING",
                                 "extracted_fields_count": len((run.result or {}).get("fields", {}) or {}),
                             },
+                            tenant_id=tenant_id,
                         )
                         await connection_manager.broadcast_to_tenant(
                             tenant_id,
@@ -144,6 +172,7 @@ async def run_extraction_consumer(*, stop_event: asyncio.Event) -> None:
                                 "extraction": result_dict.get("fields", result_dict)
                                 or result_dict,
                             },
+                            tenant_id=tenant_id,
                         )
                         await connection_manager.broadcast_to_tenant(
                             tenant_id,
@@ -171,9 +200,11 @@ async def run_extraction_consumer(*, stop_event: asyncio.Event) -> None:
 
                 # Detach trace context after span
                 if token is not None:
-                    from opentelemetry.context import detach
-
-                    detach(token)
+                    try:
+                        from opentelemetry.context import detach
+                        detach(token)
+                    except Exception:
+                        pass
 
             except Exception:
                 logger.exception("extraction_consumer failed; skipping after retries")

@@ -153,6 +153,17 @@ def validate_pdf(file_bytes: bytes) -> None:
         ) from exc
 
 
+def validate_doc(file_bytes: bytes) -> None:
+    """
+    Validate that a legacy DOC file has a valid OLE Compound Document signature.
+    """
+    if len(file_bytes) < 512 or not file_bytes.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Malformed or corrupted DOC file.",
+        )
+
+
 def validate_docx(file_bytes: bytes) -> None:
     """
     Validate that a DOCX file is a valid zip archive containing document XML.
@@ -177,19 +188,25 @@ def validate_docx(file_bytes: bytes) -> None:
 
 def validate_txt(file_bytes: bytes) -> None:
     """
-    Validate that a text file is readable text content.
+    Validate that a text file is readable text content and not empty or whitespace-only.
     """
 
     try:
-        file_bytes.decode("utf-8")
+        text = file_bytes.decode("utf-8")
     except UnicodeDecodeError:
         try:
-            file_bytes.decode("latin-1")
+            text = file_bytes.decode("latin-1")
         except Exception as exc:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Malformed or unreadable text file.",
             ) from exc
+
+    if not text.strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file is empty.",
+        )
 
 
 def validate_uploaded_file(
@@ -222,6 +239,8 @@ def validate_uploaded_file(
     # File-type specific structural validation.
     if extension == ".pdf":
         validate_pdf(file_bytes)
+    elif extension == ".doc":
+        validate_doc(file_bytes)
     elif extension == ".docx":
         validate_docx(file_bytes)
     elif extension == ".txt":
