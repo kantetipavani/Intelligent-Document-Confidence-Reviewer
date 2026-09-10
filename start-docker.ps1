@@ -1,4 +1,4 @@
-﻿# ==============================================================================
+# ==============================================================================
 # Intelligent Document Confidence Reviewer - Docker Startup Script
 # Automatically resolves port conflicts (e.g. port 3000 / 8000) and starts stack
 # ==============================================================================
@@ -41,7 +41,27 @@ if ($backendConn) {
     }
 }
 
-# 3. Launch Docker Compose
+# 3. Check port 27017 (local MongoDB service) and assign MONGO_PORT if busy
+$mongoPort = if ($env:MONGO_PORT) { [int]$env:MONGO_PORT } else { 27017 }
+$mongoConn = Get-NetTCPConnection -LocalPort $mongoPort -ErrorAction SilentlyContinue | Where-Object { $_.State -eq "Listen" }
+if ($mongoConn) {
+    $nonDockerMongo = $false
+    foreach ($conn in $mongoConn) {
+        $pidToKill = $conn.OwningProcess
+        if ($pidToKill -and $pidToKill -ne 0) {
+            $proc = Get-Process -Id $pidToKill -ErrorAction SilentlyContinue
+            if ($proc -and $proc.ProcessName -notmatch "com.docker|wslrelay|docker") {
+                $nonDockerMongo = $true
+            }
+        }
+    }
+    if ($nonDockerMongo) {
+        Write-Host "Local service detected on port $mongoPort. Mapping container MongoDB to port 27018..." -ForegroundColor Yellow
+        $env:MONGO_PORT = "27018"
+    }
+}
+
+# 4. Launch Docker Compose
 Write-Host "Starting Docker containers..." -ForegroundColor Green
 docker compose up -d
 

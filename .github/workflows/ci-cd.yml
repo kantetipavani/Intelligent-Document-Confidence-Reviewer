@@ -97,11 +97,56 @@ jobs:
           pip install pytest
 
       - name: Run Tests
-        run: pytest || true
+        env:
+          KAFKA_ENABLED: "false"
+          SKIP_DB: "true"
+        run: pytest -v
+
+  docker-verify:
+    name: DOCKER BUILD & NON-ROOT VERIFY
+    needs: code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Compose Specification
+        run: docker compose config --quiet
+
+      - name: Build Docker Images
+        run: docker compose build backend celery_worker frontend
+
+      - name: Verify Backend Non-Root Execution
+        run: |
+          USER_ID=$(docker run --rm indcr-backend:latest id -u)
+          echo "Backend Container UID: $USER_ID"
+          if [ "$USER_ID" -eq 0 ]; then
+            echo "Security Violation: indcr-backend runs as root!"
+            exit 1
+          fi
+
+      - name: Verify Celery Worker Non-Root Execution
+        run: |
+          USER_ID=$(docker run --rm indcr-celery-worker:latest id -u)
+          echo "Celery Worker Container UID: $USER_ID"
+          if [ "$USER_ID" -eq 0 ]; then
+            echo "Security Violation: indcr-celery-worker runs as root!"
+            exit 1
+          fi
+
+      - name: Verify Frontend Non-Root Execution
+        run: |
+          USER_ID=$(docker run --rm indcr-frontend:latest id -u)
+          echo "Frontend Container UID: $USER_ID"
+          if [ "$USER_ID" -eq 0 ]; then
+            echo "Security Violation: indcr-frontend runs as root!"
+            exit 1
+          fi
 
   release:
     name: RELEASE
-    needs: test
+    needs:
+      - test
+      - docker-verify
     runs-on: ubuntu-latest
 
     defaults:

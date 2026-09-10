@@ -13,3 +13,16 @@ htmlcov/
 *.log
 .git
 .gitignore
+.dockerignore
+Dockerfile*
+.env
+.env.*
+*.env
+tests/
+.ruff_cache/
+.mypy_cache/
+.vscode/
+.idea/
+*.egg-info/
+dist/
+build/

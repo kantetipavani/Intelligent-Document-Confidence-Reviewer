@@ -1,18 +1,42 @@
-FROM python:3.12-slim
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
-# Install deps
-COPY requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir --upgrade pip \
-  && pip install --no-cache-dir -r requirements.txt
+# System deps (keep minimal)
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends build-essential \
+  && rm -rf /var/lib/apt/lists/*
 
-# Copy app
-COPY app ./app
-COPY README.md ./README.md
+# Install Python deps into a wheelhouse
+COPY requirements.txt ./requirements.txt
+RUN python -m pip install --upgrade pip \
+  && python -m pip wheel --wheel-dir /wheels -r requirements.txt
+
+
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+# Create non-root user and group
+RUN useradd -m -u 10001 -s /bin/bash appuser
+
+# Copy wheels and install
+COPY --from=builder /wheels /wheels
+RUN python -m pip install --no-index --find-links=/wheels /wheels/* \
+  && rm -rf /wheels
+
+# Copy application source with non-root ownership
+COPY --chown=appuser:appuser app ./app
+COPY --chown=appuser:appuser README.md ./README.md
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
+
+USER appuser
+
+# Celery worker healthcheck: verify celery worker process is alive
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+  CMD python -c "import os; os.kill(1, 0)" || exit 1
 
 # Celery worker entry
 CMD ["celery", "-A", "app.celery_worker_entrypoint", "worker", "-l", "INFO", "-Q", "extraction"]

@@ -4,7 +4,7 @@ services:
 
     container_name: indcr-mongo
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT:-27017}:27017"
 
     volumes:
       - mongo_data:/data/db
@@ -52,7 +52,7 @@ services:
       mongo:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "8000:8000"
     environment:
@@ -69,7 +69,12 @@ services:
       SMTP_STRICT: ${SMTP_STRICT:-false}
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-    # Uvicorn listens on 8000
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as r; import sys; sys.exit(0 if r.urlopen('http://127.0.0.1:8000/health').status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   # Legacy Celery worker (kept for backward compatibility; extraction trigger uses Kafka by default)
   celery_worker:
@@ -80,7 +85,7 @@ services:
     container_name: indcr-celery-worker
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
       mongo:
         condition: service_healthy
     environment:
@@ -92,6 +97,12 @@ services:
       MONGODB_DB: ${MONGODB_DB:-idc_dev}
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-strong-secret}
       SKIP_DB: ${SKIP_DB:-false}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     command: ["celery", "-A", "app.celery_worker_entrypoint", "worker", "-l", "INFO", "-Q", "extraction"]
 
   zookeeper:
@@ -102,7 +113,13 @@ services:
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
-
+      KAFKA_JVM_PERFORMANCE_OPTS: "-Xms128m -Xmx256m"
+    healthcheck:
+      test: ["CMD", "cub", "zk-ready", "127.0.0.1:2181", "2"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
 
   kafka:
     image: confluentinc/cp-kafka:7.6.0
@@ -115,9 +132,16 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+      KAFKA_HEAP_OPTS: "-Xms256m -Xmx512m"
     depends_on:
-      - zookeeper
-
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "cub", "kafka-ready", "1", "2", "-b", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 25s
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -128,7 +152,8 @@ services:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
     depends_on:
-      - kafka
+      kafka:
+        condition: service_healthy
 
   kafka_extraction_consumer:
     image: indcr-backend:latest
@@ -140,7 +165,9 @@ services:
       mongo:
         condition: service_healthy
       kafka:
-        condition: service_started
+        condition: service_healthy
+      backend:
+        condition: service_healthy
     environment:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_TOPIC_EXTRACTION_REQUESTS: invoice_extraction_requested
@@ -153,7 +180,11 @@ services:
       SKIP_DB: ${SKIP_DB:-false}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     healthcheck:
-      disable: true
+      test: ["CMD", "python", "-c", "import os; os.kill(1, 0)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
     command: ["python", "-m", "app.workers.kafka_extraction_consumer"]
 
   grpc_extraction_server:
@@ -176,11 +207,14 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-strong-secret}
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     healthcheck:
-      disable: true
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('127.0.0.1', 50051)); s.close()"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     ports:
       - "50051:50051"
     command: ["python", "-m", "app.grpc.server_entrypoint"]
-
 
   jaeger:
     image: jaegertracing/all-in-one:1.57
@@ -202,16 +236,12 @@ services:
     depends_on:
       - jaeger
 
-
-
-
-
   flower:
     image: mher/flower:2.0.1
     container_name: indcr-flower
     depends_on:
       redis:
-        condition: service_started
+        condition: service_healthy
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0
     ports:
@@ -226,11 +256,18 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: indcr-frontend
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://127.0.0.1:3000', (res) => { process.exit(res.statusCode < 500 ? 0 : 1); }).on('error', () => process.exit(1));"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   mongo_data:

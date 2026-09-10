@@ -25,9 +25,9 @@ COPY --from=builder /wheels /wheels
 RUN python -m pip install --no-index --find-links=/wheels /wheels/* \
   && rm -rf /wheels
 
-# Copy application source
-COPY app ./app
-COPY README.md ./README.md
+# Copy application source with non-root ownership
+COPY --chown=appuser:appuser app ./app
+COPY --chown=appuser:appuser README.md ./README.md
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
